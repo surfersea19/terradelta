@@ -1,0 +1,54 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+backend/venv/
+.venv/
+venv/
+
+# =========================
+# Environment / Secrets
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Node / React
+# =========================
+frontend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# =========================
+# Generated ML Models
+# =========================
+backend/models/*.pkl
+backend/models/*.pt
+
+# =========================
+# Generated Analysis Output
+# =========================
+backend/pipeline/output_files/
+
+# =========================
+# Local Database
+# =========================
+backend/*.db
+
+# =========================
+# IDE
+# =========================
+.vscode/
+.vs/
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db

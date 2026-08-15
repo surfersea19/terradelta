@@ -52,3 +52,5 @@ backend/*.db
 # =========================
 .DS_Store
 Thumbs.db
+
+backend/output_files/

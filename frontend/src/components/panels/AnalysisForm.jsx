@@ -39,7 +39,7 @@ export default function AnalysisForm({ onFlyTo, onResult, onProgress, drawMode, 
     if (date2 <= date1) return toast.error('"After" date must be later than "before" date')
 
     setSubmitting(true)
-    setDrawMode(false)
+    onDrawModeChange(false)
 
     try {
       const { job_id } = await submitAnalysis({ bbox, date1, date2, model })

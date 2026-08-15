@@ -191,7 +191,7 @@ export default function BaseMap({
         {/* GeoJSON change polygons (always visible when results exist) */}
         {changeGeojson && changeGeojson.features?.length > 0 && (
           <GeoJSON
-            key={JSON.stringify(changeGeojson).length}
+            key={JSON.stringify(changeGeojson)}
             data={changeGeojson}
             style={changeStyle}
             onEachFeature={onEachFeature}

@@ -14,29 +14,24 @@ const CHANGE_TYPES = [
   'Other',
 ]
 
-function ImagePanel({ url, label, year, blur = false }) {
+function ImagePanel({ url, label, year }) {
+  const [failed, setFailed] = useState(false)
   return (
     <div className="flex flex-col gap-1.5">
       <div className="text-xs text-slate-400 font-medium uppercase tracking-wider">{label} · {year}</div>
-      <div className="relative rounded-xl overflow-hidden bg-slate-800 aspect-video border border-border">
-        {url ? (
+      <div className="relative rounded-xl overflow-hidden bg-slate-800 aspect-video border border-border flex items-center justify-center">
+        {url && !failed ? (
           <img
             src={url}
             alt={label}
-            className={`w-full h-full object-cover transition-all duration-500 ${blur ? 'blur-xl scale-105' : ''}`}
-            onError={e => { e.target.style.display = 'none' }}
+            className="w-full h-full object-cover"
+            onError={() => setFailed(true)}
           />
         ) : (
-          /* Placeholder grid pattern (satellite-like) */
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="grid grid-cols-8 grid-rows-6 gap-px w-full h-full opacity-20">
-              {Array.from({ length: 48 }).map((_, i) => (
-                <div key={i} className={`${Math.random() > 0.6 ? 'bg-green-800' : Math.random() > 0.4 ? 'bg-slate-700' : 'bg-slate-600'}`} />
-              ))}
-            </div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-slate-500 text-sm">Satellite Image</span>
-            </div>
+          <div className="flex flex-col items-center gap-2 text-slate-500">
+            <span className="text-3xl">🛰️</span>
+            <span className="text-xs">Satellite image not available</span>
+            <span className="text-[10px] text-slate-600">Add images to backend/explorer_data/</span>
           </div>
         )}
       </div>

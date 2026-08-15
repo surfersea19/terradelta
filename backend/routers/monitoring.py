@@ -10,7 +10,7 @@ import logging
 from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from db.database import (
@@ -27,13 +27,15 @@ class MonitoringRequest(BaseModel):
     bbox: List[float]
     dates: List[str]     # YYYY-MM-DD, min 2, max 6
 
-    @validator("bbox")
+    @field_validator("bbox")
+    @classmethod
     def validate_bbox(cls, v):
         if len(v) != 4:
             raise ValueError("bbox must have 4 values")
         return [float(x) for x in v]
 
-    @validator("dates")
+    @field_validator("dates")
+    @classmethod
     def validate_dates(cls, v):
         if len(v) < 2:
             raise ValueError("Need at least 2 dates")
@@ -57,7 +59,7 @@ def _run_monitoring_job(job_id: str, request: MonitoringRequest):
         )
 
         db_result = {
-            "job_id":        job_id,
+           
             "timeline_data": json.dumps(result.get("timeline", [])),
             "output_dir":    result.get("output_dir"),
             "model_used":    "rf",

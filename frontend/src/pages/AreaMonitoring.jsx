@@ -62,7 +62,7 @@ export default function AreaMonitoring() {
   } = useMonitoringStore()
 
   const [drawMode, setDrawMode] = useState(false)
-  const [flyTo, setFlyTo]       = useState(null)
+  // line deleted
 
   const handleBboxChange = useCallback((newBbox) => {
     setBbox(newBbox)
@@ -242,7 +242,7 @@ export default function AreaMonitoring() {
         <BaseMap
           center={[20.5, 78.9]}
           zoom={5}
-          flyTo={flyTo}
+          // line deleted
           drawMode={drawMode}
           onBboxChange={handleBboxChange}
           bbox={bbox}

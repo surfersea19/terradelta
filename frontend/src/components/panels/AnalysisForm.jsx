@@ -12,14 +12,14 @@ const PRESET_LOCATIONS = [
   { label: 'Custom…',             center: null },
 ]
 
-export default function AnalysisForm({ onFlyTo, onResult, onProgress }) {
+export default function AnalysisForm({ onFlyTo, onResult, onProgress, drawMode, onDrawModeChange }) {
   const {
     bbox, date1, date2, model,
     setBbox, setDate1, setDate2, setModel,
     setJobId, setJobStatus, setResult, jobStatus, jobProgress, jobMessage,
   } = useAnalysisStore()
 
-  const [drawMode, setDrawMode] = useState(false)
+  
   const [submitting, setSubmitting] = useState(false)
 
   const handleLocationSelect = (e) => {
@@ -28,8 +28,8 @@ export default function AnalysisForm({ onFlyTo, onResult, onProgress }) {
   }
 
   const toggleDrawMode = () => {
-    setDrawMode(d => !d)
-    if (!drawMode) toast('Click and drag on the map to draw your AOI', { icon: '✏️' })
+  onDrawModeChange(!drawMode)
+  if (!drawMode) toast('Click and drag on the map to draw your AOI', { icon: '✏️' })
   }
 
   const handleSubmit = async () => {
@@ -48,9 +48,11 @@ export default function AnalysisForm({ onFlyTo, onResult, onProgress }) {
       toast.success('Analysis submitted!')
 
       // Poll for completion
+      let retries=0
       const interval = setInterval(async () => {
         try {
           const status = await getAnalysisStatus(job_id)
+          retries = 0
           setJobStatus(status.status, status.progress, status.message)
           onProgress(status.progress, status.message)
 
@@ -66,11 +68,14 @@ export default function AnalysisForm({ onFlyTo, onResult, onProgress }) {
             toast.error('Analysis failed. Check server logs.')
             setSubmitting(false)
           }
-        } catch (err) {
-          clearInterval(interval)
-          toast.error('Connection error while polling status')
-          setSubmitting(false)
-        }
+         } catch (err) {
+          retries++
+          if (retries >= 3) {
+           clearInterval(interval)
+           toast.error('Lost connection to server. Please refresh and try again.')
+           setSubmitting(false)
+          }
+         }
       }, 2000)
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to submit analysis')

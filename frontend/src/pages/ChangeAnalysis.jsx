@@ -7,7 +7,7 @@ import { useAnalysisStore } from '../store/analysisStore.js'
 
 export default function ChangeAnalysis() {
   const {
-    bbox, setBbox, result, activeLayer,
+    bbox, setBbox, result, activeLayer, setActiveLayer,
     jobStatus, jobProgress, jobMessage,
   } = useAnalysisStore()
 
@@ -93,32 +93,29 @@ export default function ChangeAnalysis() {
         />
 
         {/* Result layer switcher overlay (top-left of map) */}
-        {result && (
-          <div className="absolute top-3 left-3 z-[1000] flex gap-1">
-            {[
-              { id: 'before', label: 'Before' },
-              { id: 'after',  label: 'After' },
-              { id: 'change', label: '⚡ Changes' },
-            ].map(({ id, label }) => {
-              const { activeLayer: al, setActiveLayer } = useAnalysisStore.getState()
-              return (
-                <button
-                  key={id}
-                  onClick={() => setActiveLayer(id)}
-                  className={`px-2.5 py-1 text-xs rounded font-medium transition-colors ${
-                    activeLayer === id
-                      ? id === 'change'
-                        ? 'bg-accent text-white'
-                        : 'bg-primary text-white'
-                      : 'bg-card/90 text-slate-300 hover:bg-card border border-border'
-                  }`}
-                >
-                  {label}
-                </button>
-              )
-            })}
-          </div>
-        )}
+      {result && (
+        <div className="absolute top-3 left-3 z-[1000] flex gap-1">
+         {[
+          { id: 'before', label: 'Before' },
+          { id: 'after',  label: 'After' },
+          { id: 'change', label: '⚡ Changes' },
+         ].map(({ id, label }) => (
+          <button
+           key={id}
+           onClick={() => setActiveLayer(id)}
+           className={`px-2.5 py-1 text-xs rounded font-medium transition-colors ${
+           activeLayer === id
+            ? id === 'change'
+              ? 'bg-accent text-white'
+              : 'bg-primary text-white'
+            : 'bg-card/90 text-slate-300 hover:bg-card border border-border'
+        }`}
+      >
+        {label}
+      </button>
+    ))}
+  </div>
+)} 
       </div>
     </div>
   )

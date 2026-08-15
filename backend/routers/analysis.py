@@ -13,7 +13,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from db.database import get_db, create_job, update_job_progress, save_result, get_job, get_result
@@ -35,7 +35,8 @@ class AnalysisRequest(BaseModel):
     model: str = "rf"   # rf | siamese
     location_name: Optional[str] = None
 
-    @validator("bbox")
+    @field_validator("bbox")
+    @classmethod
     def validate_bbox(cls, v):
         if len(v) != 4:
             raise ValueError("bbox must have 4 values: [lon_min, lat_min, lon_max, lat_max]")
@@ -49,7 +50,8 @@ class AnalysisRequest(BaseModel):
             raise ValueError("AOI too large. Maximum ~100 km² (≈1° × 1°)")
         return [float(x) for x in v]
 
-    @validator("model")
+    @field_validator("model")
+    @classmethod
     def validate_model(cls, v):
         if v not in ("rf", "siamese"):
             raise ValueError("model must be 'rf' or 'siamese'")
@@ -78,7 +80,7 @@ def _run_job(job_id: str, request: AnalysisRequest):
 
         # Save to DB (only scalar fields)
         db_result = {
-            "job_id":                  job_id,
+          
             "changed_area_ha":         result.get("changed_area_ha"),
             "change_percent":          result.get("change_percent"),
             "num_clusters":            result.get("num_clusters"),

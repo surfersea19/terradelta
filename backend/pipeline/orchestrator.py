@@ -27,7 +27,7 @@ from utils.image_utils import (
 
 logger = logging.getLogger(__name__)
 
-OUTPUT_DIR = Path(__file__).parent / "output_files"
+OUTPUT_DIR = Path(__file__).parent.parent / "output_files"
 
 
 def run_analysis_pipeline(job_id: str, bbox: list,
@@ -167,7 +167,7 @@ def run_monitoring_pipeline(job_id: str, bbox: list,
         t2_bands, t2_indices = preprocess_bands(t2_bands)
 
         feats = build_feature_array(t1_bands, t2_bands, t1_indices, t2_indices,
-                                    use_texture=False)
+                                    use_texture=True)
         model = get_model()
         prob_map = run_rf_inference(feats, model)
         mask = postprocess_change_map(prob_map)

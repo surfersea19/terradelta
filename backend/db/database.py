@@ -4,15 +4,38 @@ SQLite database setup with SQLAlchemy.
 import json
 import uuid
 from datetime import datetime
-from sqlalchemy import create_engine, Column, String, Integer, Float, Text, DateTime
+from sqlalchemy import create_engine, Column, String, Integer, Float, Text, DateTime, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, relationship
 
 DATABASE_URL = "sqlite:///./terradelta.db"
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    username = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    saved_areas = relationship("SavedArea", back_populates="user")
+
+
+class SavedArea(Base):
+    __tablename__ = "saved_areas"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id"))
+    name = Column(String, nullable=False)
+    bbox = Column(Text, nullable=False) # JSON list [lon_min, lat_min, lon_max, lat_max]
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="saved_areas")
 
 
 class Job(Base):
@@ -22,9 +45,7 @@ class Job(Base):
     status = Column(String, nullable=False, default="queued")
     progress = Column(Integer, default=0)
     bbox = Column(Text, nullable=False)          # JSON string
-    date1 = Column(String, nullable=True)
-    date2 = Column(String, nullable=True)
-    dates = Column(Text, nullable=True)          # JSON array for monitoring
+    dates = Column(Text, nullable=True)          # JSON array of strings
     model = Column(String, default="rf")
     feature = Column(String, default="analysis") # analysis | monitoring
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -36,19 +57,11 @@ class Result(Base):
     __tablename__ = "results"
 
     job_id = Column(String, primary_key=True)
-    changed_area_ha = Column(Float, nullable=True)
-    change_percent = Column(Float, nullable=True)
-    num_clusters = Column(Integer, nullable=True)
-    mean_confidence = Column(Float, nullable=True)
-    high_confidence_area_ha = Column(Float, nullable=True)
-    interpretation = Column(Text, nullable=True)
-    t1_actual_date = Column(String, nullable=True)
-    t2_actual_date = Column(String, nullable=True)
-    cloud_cover_t1 = Column(Float, nullable=True)
-    cloud_cover_t2 = Column(Float, nullable=True)
     model_used = Column(String, nullable=True)
     output_dir = Column(String, nullable=True)
-    timeline_data = Column(Text, nullable=True)  # JSON for monitoring
+    timeline_data = Column(Text, nullable=True)  # JSON for array of changes
+    actual_dates = Column(Text, nullable=True)   # JSON array of dates
+    cloud_covers = Column(Text, nullable=True)   # JSON array of cloud cover percentages
 
 
 def init_db():
@@ -65,15 +78,13 @@ def get_db():
 
 # --- Helper functions ---
 
-def create_job(db, job_id: str, bbox: list, date1: str = None, date2: str = None,
+def create_job(db, job_id: str, bbox: list,
                dates: list = None, model: str = "rf", feature: str = "analysis") -> Job:
     job = Job(
         id=job_id,
         status="queued",
         progress=0,
         bbox=json.dumps(bbox),
-        date1=date1,
-        date2=date2,
         dates=json.dumps(dates) if dates else None,
         model=model,
         feature=feature,

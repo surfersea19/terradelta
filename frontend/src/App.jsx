@@ -3,6 +3,7 @@ import NavBar from './components/shared/NavBar.jsx'
 import ChangeAnalysis from './pages/ChangeAnalysis.jsx'
 import ChangeExplorer from './pages/ChangeExplorer.jsx'
 import AreaMonitoring from './pages/AreaMonitoring.jsx'
+import AILandAdvisor from './pages/AILandAdvisor.jsx'
 import NotFound from './pages/NotFound.jsx'
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
           <Route path="/analysis"   element={<ChangeAnalysis />} />
           <Route path="/explorer"   element={<ChangeExplorer />} />
           <Route path="/monitoring" element={<AreaMonitoring />} />
+          <Route path="/advisor"    element={<AILandAdvisor />} />
           <Route path="*"           element={<NotFound />} />
         </Routes>
       </main>

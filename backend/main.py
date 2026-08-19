@@ -72,10 +72,14 @@ app.mount("/explorer-static", StaticFiles(directory=str(EXPLORER_STATIC)), name=
 from routers.analysis   import router as analysis_router
 from routers.explorer   import router as explorer_router
 from routers.monitoring import router as monitoring_router
+from routers.auth       import router as auth_router
+from routers.advisor    import router as advisor_router
 
 app.include_router(analysis_router)
 app.include_router(explorer_router)
 app.include_router(monitoring_router)
+app.include_router(auth_router)
+app.include_router(advisor_router)
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

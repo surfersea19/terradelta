@@ -30,9 +30,7 @@ OUTPUT_DIR = Path(__file__).parent.parent / "output_files"
 
 class AnalysisRequest(BaseModel):
     bbox: list          # [lon_min, lat_min, lon_max, lat_max]
-    date1: str          # YYYY-MM-DD
-    date2: str          # YYYY-MM-DD
-    model: str = "rf"   # rf | siamese
+    dates: list         # List of YYYY-MM-DD
     location_name: Optional[str] = None
 
     @field_validator("bbox")
@@ -50,11 +48,11 @@ class AnalysisRequest(BaseModel):
             raise ValueError("AOI too large. Maximum ~100 km² (≈1° × 1°)")
         return [float(x) for x in v]
 
-    @field_validator("model")
+    @field_validator("dates")
     @classmethod
-    def validate_model(cls, v):
-        if v not in ("rf", "siamese"):
-            raise ValueError("model must be 'rf' or 'siamese'")
+    def validate_dates(cls, v):
+        if len(v) < 2 or len(v) > 4:
+            raise ValueError("Must provide between 2 and 4 dates for analysis")
         return v
 
 
@@ -72,27 +70,17 @@ def _run_job(job_id: str, request: AnalysisRequest):
         result = run_analysis_pipeline(
             job_id=job_id,
             bbox=request.bbox,
-            date1=request.date1,
-            date2=request.date2,
-            model_type=request.model,
+            dates=request.dates,
             progress_callback=progress_callback,
         )
 
-        # Save to DB (only scalar fields)
+        # Save to DB
         db_result = {
-          
-            "changed_area_ha":         result.get("changed_area_ha"),
-            "change_percent":          result.get("change_percent"),
-            "num_clusters":            result.get("num_clusters"),
-            "mean_confidence":         result.get("mean_confidence"),
-            "high_confidence_area_ha": result.get("high_confidence_area_ha"),
-            "interpretation":          result.get("interpretation"),
-            "t1_actual_date":          result.get("t1_actual_date"),
-            "t2_actual_date":          result.get("t2_actual_date"),
-            "cloud_cover_t1":          result.get("cloud_cover_t1"),
-            "cloud_cover_t2":          result.get("cloud_cover_t2"),
-            "model_used":              result.get("model_used"),
-            "output_dir":              result.get("output_dir"),
+            "model_used":    result.get("model_used", "rf"),
+            "output_dir":    result.get("output_dir"),
+            "timeline_data": json.dumps(result.get("timeline", [])),
+            "actual_dates":  json.dumps(result.get("actual_dates", [])),
+            "cloud_covers":  json.dumps(result.get("cloud_covers", [])),
         }
         save_result(db, job_id, db_result)
         update_job_progress(db, job_id, 100, status="complete")
@@ -117,9 +105,8 @@ async def submit_analysis(
     create_job(
         db, job_id,
         bbox=request.bbox,
-        date1=request.date1,
-        date2=request.date2,
-        model=request.model,
+        dates=request.dates,
+        model="rf",
         feature="analysis",
     )
     background_tasks.add_task(_run_job, job_id, request)
@@ -164,29 +151,30 @@ async def get_result_endpoint(job_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Result not found")
 
     bbox = json.loads(job.bbox)
+    dates = json.loads(job.dates) if job.dates else []
+    timeline = json.loads(result.timeline_data or "[]")
+    actual_dates = json.loads(result.actual_dates or "[]")
+    cloud_covers = json.loads(result.cloud_covers or "[]")
+
+    image_urls = [{"date": actual_dates[0] if actual_dates else (dates[0] if dates else ""), "url": f"/files/{job_id}/date_0.png"}]
+    for i in range(1, len(dates)):
+        actual = actual_dates[i] if i < len(actual_dates) else dates[i]
+        image_urls.append({
+            "date":       actual,
+            "url":        f"/files/{job_id}/date_{i}.png",
+            "change_url": f"/files/{job_id}/change_{i}.png",
+            "geojson":    f"/files/{job_id}/changes_{i}.geojson",
+        })
 
     return {
-        "job_id":               job_id,
-        "bbox":                 bbox,
-        "date1":                job.date1,
-        "date2":                job.date2,
-        "t1_actual_date":       result.t1_actual_date,
-        "t2_actual_date":       result.t2_actual_date,
-        "cloud_cover_t1":       result.cloud_cover_t1,
-        "cloud_cover_t2":       result.cloud_cover_t2,
-        "model_used":           result.model_used,
-        "before_image_url":     f"/files/{job_id}/before.png",
-        "after_image_url":      f"/files/{job_id}/after.png",
-        "change_mask_url":      f"/files/{job_id}/change_mask.png",
-        "change_geojson_url":   f"/files/{job_id}/changes.geojson",
-        "stats": {
-            "changed_area_ha":         result.changed_area_ha,
-            "change_percent":          result.change_percent,
-            "num_clusters":            result.num_clusters,
-            "mean_confidence":         result.mean_confidence,
-            "high_confidence_area_ha": result.high_confidence_area_ha,
-        },
-        "interpretation":       result.interpretation,
+        "job_id":       job_id,
+        "bbox":         bbox,
+        "dates":        dates,
+        "actual_dates": actual_dates,
+        "cloud_covers": cloud_covers,
+        "model_used":   result.model_used,
+        "timeline":     timeline,
+        "images":       image_urls,
     }
 
 
@@ -202,26 +190,19 @@ async def download_report(job_id: str, db: Session = Depends(get_db)):
     pdf_path = OUTPUT_DIR / job_id / "report.pdf"
 
     if not pdf_path.exists():
+        dates = json.loads(job.dates) if job.dates else []
+        timeline = json.loads(result_row.timeline_data or "[]")
+        actual_dates = json.loads(result_row.actual_dates or "[]")
+        cloud_covers = json.loads(result_row.cloud_covers or "[]")
+
         # Generate on demand
         result_data = {
             "bbox":           json.loads(job.bbox),
-            "date1":          job.date1,
-            "date2":          job.date2,
-            "t1_actual_date": result_row.t1_actual_date,
-            "t2_actual_date": result_row.t2_actual_date,
-            "cloud_cover_t1": result_row.cloud_cover_t1,
-            "cloud_cover_t2": result_row.cloud_cover_t2,
+            "dates":          dates,
+            "actual_dates":   actual_dates,
+            "cloud_covers":   cloud_covers,
             "model_used":     result_row.model_used,
-            "interpretation": result_row.interpretation,
-            "stats": {
-                "changed_area_ha":         result_row.changed_area_ha,
-                "changed_area_m2":         int((result_row.changed_area_ha or 0) * 10000),
-                "change_percent":          result_row.change_percent,
-                "num_clusters":            result_row.num_clusters,
-                "mean_confidence":         result_row.mean_confidence,
-                "high_confidence_area_ha": result_row.high_confidence_area_ha,
-                "largest_cluster_ha":      0,
-            },
+            "timeline":       timeline,
         }
         generate_pdf_report(result_data, job_id, pdf_path)
 

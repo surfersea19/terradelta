@@ -88,15 +88,18 @@ def generate_pdf_report(result: dict, job_id: str, output_path: Path) -> Path:
         bbox = result.get("bbox", [])
         bbox_str = (f"{bbox[0]:.4f}°E, {bbox[1]:.4f}°N to "
                     f"{bbox[2]:.4f}°E, {bbox[3]:.4f}°N") if len(bbox) == 4 else "N/A"
+        
+        timeline = result.get("timeline", [])
+        actual_dates = result.get("actual_dates", [])
+        cloud_covers = result.get("cloud_covers", [])
+        
+        dates_str = " → ".join(actual_dates) if actual_dates else "N/A"
 
         meta_data = [
             ["Job ID", job_id[:16] + "..."],
             ["Analysis Area (bbox)", bbox_str],
-            ["Date 1 (Before)", result.get("t1_actual_date", result.get("date1", "N/A"))],
-            ["Date 2 (After)",  result.get("t2_actual_date", result.get("date2", "N/A"))],
+            ["Timeline Dates", dates_str],
             ["Model Used",      result.get("model_used", "Random Forest").upper()],
-            ["Cloud Cover T1",  f"{result.get('cloud_cover_t1', 0):.1f}%"],
-            ["Cloud Cover T2",  f"{result.get('cloud_cover_t2', 0):.1f}%"],
             ["Report Generated", datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")],
         ]
         meta_table = Table(meta_data, colWidths=[5*cm, 12*cm])
@@ -115,45 +118,58 @@ def generate_pdf_report(result: dict, job_id: str, output_path: Path) -> Path:
         story.append(meta_table)
         story.append(Spacer(1, 0.4*cm))
 
-        # Change Statistics
-        story.append(Paragraph("Change Statistics", section_style))
-        stats = result.get("stats", {})
+        from reportlab.platypus import PageBreak
+        
+        for i, step in enumerate(timeline):
+            if i > 0:
+                story.append(PageBreak())
+                story.append(Paragraph(f"Change Statistics: Step {i+1}", section_style))
+            else:
+                story.append(Paragraph("Change Statistics", section_style))
+                
+            prev_date = actual_dates[i] if i < len(actual_dates) else "T1"
+            curr_date = step.get("date", "T2")
+            
+            story.append(Paragraph(f"<b>Interval:</b> {prev_date} to {curr_date}", body_style))
+            story.append(Spacer(1, 0.2*cm))
+            
+            stats = step.get("stats", {})
 
-        stats_data = [
-            ["Metric", "Value"],
-            ["Changed Area", f"{stats.get('changed_area_ha', 0):.2f} ha "
-                             f"({stats.get('changed_area_m2', 0):,} m²)"],
-            ["Change Percentage", f"{stats.get('change_percent', 0):.2f}% of AOI"],
-            ["Number of Clusters", str(stats.get("num_clusters", 0))],
-            ["Mean Confidence", f"{stats.get('mean_confidence', 0):.1%}"],
-            ["High-Confidence Area",
-             f"{stats.get('high_confidence_area_ha', 0):.2f} ha"],
-            ["Largest Cluster",
-             f"{stats.get('largest_cluster_ha', 0):.2f} ha"],
-        ]
-        stats_table = Table(stats_data, colWidths=[8*cm, 9*cm])
-        stats_table.setStyle(TableStyle([
-            ("FONTNAME",       (0,0), (-1,0), "Helvetica-Bold"),
-            ("FONTSIZE",       (0,0), (-1,-1), 10),
-            ("BACKGROUND",     (0,0), (-1,0), colors.HexColor("#1a6e4a")),
-            ("TEXTCOLOR",      (0,0), (-1,0), colors.white),
-            ("ROWBACKGROUNDS", (0,1), (-1,-1),
-             [colors.white, colors.HexColor("#f0fdf4")]),
-            ("TOPPADDING",     (0,0), (-1,-1), 6),
-            ("BOTTOMPADDING",  (0,0), (-1,-1), 6),
-            ("LEFTPADDING",    (0,0), (-1,-1), 10),
-            ("GRID",           (0,0), (-1,-1), 0.5,
-             colors.HexColor("#e2e8f0")),
-        ]))
-        story.append(stats_table)
-        story.append(Spacer(1, 0.4*cm))
+            stats_data = [
+                ["Metric", "Value"],
+                ["Changed Area", f"{stats.get('changed_area_ha', 0):.2f} ha "
+                                 f"({stats.get('changed_area_m2', 0):,} m²)"],
+                ["Change Percentage", f"{stats.get('change_percent', 0):.2f}% of AOI"],
+                ["Number of Clusters", str(stats.get("num_clusters", 0))],
+                ["Mean Confidence", f"{stats.get('mean_confidence', 0):.1%}"],
+                ["High-Confidence Area",
+                 f"{stats.get('high_confidence_area_ha', 0):.2f} ha"],
+                ["Largest Cluster",
+                 f"{stats.get('largest_cluster_ha', 0):.2f} ha"],
+            ]
+            stats_table = Table(stats_data, colWidths=[8*cm, 9*cm])
+            stats_table.setStyle(TableStyle([
+                ("FONTNAME",       (0,0), (-1,0), "Helvetica-Bold"),
+                ("FONTSIZE",       (0,0), (-1,-1), 10),
+                ("BACKGROUND",     (0,0), (-1,0), colors.HexColor("#1a6e4a")),
+                ("TEXTCOLOR",      (0,0), (-1,0), colors.white),
+                ("ROWBACKGROUNDS", (0,1), (-1,-1),
+                 [colors.white, colors.HexColor("#f0fdf4")]),
+                ("TOPPADDING",     (0,0), (-1,-1), 6),
+                ("BOTTOMPADDING",  (0,0), (-1,-1), 6),
+                ("LEFTPADDING",    (0,0), (-1,-1), 10),
+                ("GRID",           (0,0), (-1,-1), 0.5,
+                 colors.HexColor("#e2e8f0")),
+            ]))
+            story.append(stats_table)
+            story.append(Spacer(1, 0.4*cm))
 
-        # Interpretation
-        story.append(Paragraph("AI Interpretation", section_style))
-        interpretation = result.get("interpretation",
-                                    "No interpretation available.")
-        story.append(Paragraph(interpretation, body_style))
-        story.append(Spacer(1, 0.4*cm))
+            # Interpretation
+            story.append(Paragraph("AI Interpretation", section_style))
+            interpretation = step.get("interpretation",
+                                        "No interpretation available.")
+            story.append(Paragraph(interpretation, body_style))
+            story.append(Spacer(1, 0.4*cm))
 
         # Limitations disclaimer
         story.append(HRFlowable(width="100%", thickness=0.5,

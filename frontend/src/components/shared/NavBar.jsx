@@ -4,6 +4,7 @@ const NAV_LINKS = [
   { to: '/analysis',   label: 'Change Analysis' },
   { to: '/explorer',   label: 'Change Explorer' },
   { to: '/monitoring', label: 'Area Monitoring' },
+  { to: '/advisor',    label: 'AI Land Advisor' },
 ]
 
 export default function NavBar() {

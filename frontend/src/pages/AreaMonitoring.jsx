@@ -5,8 +5,9 @@ import {
 import BaseMap from '../components/map/BaseMap.jsx'
 import LoadingOverlay from '../components/shared/LoadingOverlay.jsx'
 import { useMonitoringStore } from '../store/analysisStore.js'
-import { submitMonitoring, getMonitoringStatus, getMonitoringResult } from '../services/api.js'
+import { submitMonitoring, getMonitoringStatus, getMonitoringResult, login, signup, logout, getCurrentUser, getSavedAreas, saveArea } from '../services/api.js'
 import toast from 'react-hot-toast'
+import { useEffect } from 'react'
 
 const MAX_DATES = 6
 const MIN_DATES = 2
@@ -62,7 +63,65 @@ export default function AreaMonitoring() {
   } = useMonitoringStore()
 
   const [drawMode, setDrawMode] = useState(false)
-  // line deleted
+  const [user, setUser] = useState(null)
+  const [authMode, setAuthMode] = useState('login') // 'login' or 'signup'
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [savedAreas, setSavedAreas] = useState([])
+  const [newAreaName, setNewAreaName] = useState('')
+
+  useEffect(() => {
+      const init = async () => {
+          try {
+              const u = await getCurrentUser()
+              setUser(u)
+              const areas = await getSavedAreas()
+              setSavedAreas(areas)
+          } catch (e) {
+              // Not logged in
+          }
+      }
+      init()
+  }, [])
+
+  const handleAuth = async (e) => {
+      e.preventDefault()
+      try {
+          if (authMode === 'login') {
+              await login(username, password)
+              toast.success('Logged in successfully')
+          } else {
+              await signup(username, password)
+              await login(username, password)
+              toast.success('Signed up successfully')
+          }
+          const u = await getCurrentUser()
+          setUser(u)
+          const areas = await getSavedAreas()
+          setSavedAreas(areas)
+      } catch (err) {
+          toast.error(err.response?.data?.detail || 'Authentication failed')
+      }
+  }
+
+  const handleLogout = () => {
+      logout()
+      setUser(null)
+      setSavedAreas([])
+      toast.success('Logged out')
+  }
+
+  const handleSaveArea = async () => {
+      if (!newAreaName || !bbox) return
+      try {
+          const area = await saveArea(newAreaName, bbox)
+          setSavedAreas([...savedAreas, area])
+          setNewAreaName('')
+          toast.success('Area saved!')
+      } catch (e) {
+          toast.error('Failed to save area')
+      }
+  }
 
   const handleBboxChange = useCallback((newBbox) => {
     setBbox(newBbox)
@@ -135,6 +194,48 @@ export default function AreaMonitoring() {
         </div>
 
         <div className="p-4 flex flex-col gap-4 flex-1">
+          {/* Auth & Saved Areas */}
+          {!user ? (
+              <div className="card text-sm">
+                  <div className="font-medium mb-2">{authMode === 'login' ? 'Login' : 'Sign Up'} to save areas</div>
+                  <form onSubmit={handleAuth} className="flex flex-col gap-2">
+                      <input type="text" placeholder="Username" className="input-field py-1 text-xs" value={username} onChange={e => setUsername(e.target.value)} required />
+                      <input type="password" placeholder="Password" className="input-field py-1 text-xs" value={password} onChange={e => setPassword(e.target.value)} required />
+                      <button type="submit" className="btn-primary py-1 text-xs">{authMode === 'login' ? 'Login' : 'Sign Up'}</button>
+                  </form>
+                  <button onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')} className="text-[10px] text-slate-400 mt-2 hover:text-white">
+                      {authMode === 'login' ? 'Need an account? Sign up' : 'Already have an account? Login'}
+                  </button>
+              </div>
+          ) : (
+              <div className="card text-sm">
+                  <div className="flex justify-between items-center mb-2">
+                      <span className="font-medium text-primary-l">Hi, {user.username}</span>
+                      <button onClick={handleLogout} className="text-xs text-slate-400 hover:text-white">Logout</button>
+                  </div>
+                  
+                  {savedAreas.length > 0 && (
+                      <div className="mb-3">
+                          <div className="text-xs text-slate-500 mb-1">Your Saved Areas:</div>
+                          <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
+                              {savedAreas.map(a => (
+                                  <button key={a.id} onClick={() => setBbox(a.bbox)} className="text-left text-xs bg-dark px-2 py-1 rounded hover:bg-slate-700">
+                                      📍 {a.name}
+                                  </button>
+                              ))}
+                          </div>
+                      </div>
+                  )}
+
+                  {bbox && (
+                      <div className="flex gap-1 mt-2">
+                          <input type="text" placeholder="Area name" className="input-field py-1 text-xs flex-1" value={newAreaName} onChange={e => setNewAreaName(e.target.value)} />
+                          <button onClick={handleSaveArea} disabled={!newAreaName} className="btn-secondary py-1 px-2 text-xs">Save</button>
+                      </div>
+                  )}
+              </div>
+          )}
+
           {/* AOI */}
           <div>
             <label className="section-title">Area of Interest</label>

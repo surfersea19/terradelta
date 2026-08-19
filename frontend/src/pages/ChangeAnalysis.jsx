@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import BaseMap from '../components/map/BaseMap.jsx'
 import AnalysisForm from '../components/panels/AnalysisForm.jsx'
 import ResultsPanel from '../components/panels/ResultsPanel.jsx'
@@ -8,6 +8,7 @@ import { useAnalysisStore } from '../store/analysisStore.js'
 export default function ChangeAnalysis() {
   const {
     bbox, setBbox, result, activeLayer, setActiveLayer,
+    activeStep, setActiveStep,
     jobStatus, jobProgress, jobMessage,
   } = useAnalysisStore()
 
@@ -21,15 +22,20 @@ export default function ChangeAnalysis() {
     setDrawMode(false)
   }, [setBbox])
 
-  const handleResult = useCallback((res) => {
-    setGeojson(null)
-    // Load GeoJSON from server
-    if (res.change_geojson_url) {
-      fetch(res.change_geojson_url)
-        .then(r => r.json())
-        .then(setGeojson)
-        .catch(() => {})
+  // Fetch GeoJSON when result or activeStep changes
+  useEffect(() => {
+    if (result?.images?.[activeStep]?.geojson) {
+        fetch(result.images[activeStep].geojson)
+            .then(r => r.json())
+            .then(setGeojson)
+            .catch(() => setGeojson(null))
+    } else {
+        setGeojson(null)
     }
+  }, [result, activeStep])
+
+  const handleResult = useCallback((res) => {
+    // handled by useEffect
   }, [])
 
   const handleProgress = useCallback((pct, msg) => {
@@ -38,10 +44,14 @@ export default function ChangeAnalysis() {
 
   const isRunning = ['queued', 'processing'].includes(jobStatus)
 
-  // Compute overlay bounds from bbox
   const overlayBounds = bbox
     ? [[bbox[1], bbox[0]], [bbox[3], bbox[2]]]
     : null
+
+  // Determine current map URLs
+  const beforeUrl = result?.images?.[activeStep - 1]?.url
+  const afterUrl = result?.images?.[activeStep]?.url
+  const changeMaskUrl = result?.images?.[activeStep]?.change_url
 
   return (
     <div className="flex h-full">
@@ -84,9 +94,9 @@ export default function ChangeAnalysis() {
           drawMode={drawMode}
           onBboxChange={handleBboxChange}
           bbox={bbox}
-          beforeUrl={result?.before_image_url}
-          afterUrl={result?.after_image_url}
-          changeMaskUrl={result?.change_mask_url}
+          beforeUrl={beforeUrl}
+          afterUrl={afterUrl}
+          changeMaskUrl={changeMaskUrl}
           changeGeojson={geojson}
           activeLayer={activeLayer}
           overlayBounds={overlayBounds}
@@ -94,26 +104,46 @@ export default function ChangeAnalysis() {
 
         {/* Result layer switcher overlay (top-left of map) */}
       {result && (
-        <div className="absolute top-3 left-3 z-[1000] flex gap-1">
-         {[
-          { id: 'before', label: 'Before' },
-          { id: 'after',  label: 'After' },
-          { id: 'change', label: '⚡ Changes' },
-         ].map(({ id, label }) => (
-          <button
-           key={id}
-           onClick={() => setActiveLayer(id)}
-           className={`px-2.5 py-1 text-xs rounded font-medium transition-colors ${
-           activeLayer === id
-            ? id === 'change'
-              ? 'bg-accent text-white'
-              : 'bg-primary text-white'
-            : 'bg-card/90 text-slate-300 hover:bg-card border border-border'
-        }`}
-      >
-        {label}
-      </button>
-    ))}
+        <div className="absolute top-3 left-3 z-[1000] flex flex-col gap-2">
+            <div className="flex gap-1">
+             {[
+              { id: 'before', label: 'Before' },
+              { id: 'after',  label: 'After' },
+              { id: 'change', label: '⚡ Changes' },
+             ].map(({ id, label }) => (
+              <button
+               key={id}
+               onClick={() => setActiveLayer(id)}
+               className={`px-2.5 py-1 text-xs rounded font-medium transition-colors ${
+               activeLayer === id
+                ? id === 'change'
+                  ? 'bg-accent text-white'
+                  : 'bg-primary text-white'
+                : 'bg-card/90 text-slate-300 hover:bg-card border border-border'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      
+      {result.images?.length > 2 && (
+          <div className="flex bg-card/90 rounded p-1 border border-border">
+              {result.images.slice(1).map((_, idx) => (
+                  <button
+                      key={idx}
+                      onClick={() => setActiveStep(idx + 1)}
+                      className={`px-3 py-1 text-[11px] font-medium rounded-sm transition-colors ${
+                          activeStep === idx + 1
+                          ? 'bg-slate-700 text-white'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                  >
+                      Step {idx + 1}
+                  </button>
+              ))}
+          </div>
+      )}
   </div>
 )} 
       </div>

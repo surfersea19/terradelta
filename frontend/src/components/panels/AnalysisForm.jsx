@@ -14,8 +14,8 @@ const PRESET_LOCATIONS = [
 
 export default function AnalysisForm({ onFlyTo, onResult, onProgress, drawMode, onDrawModeChange }) {
   const {
-    bbox, date1, date2, model,
-    setBbox, setDate1, setDate2, setModel,
+    bbox, dates,
+    setBbox, setDates,
     setJobId, setJobStatus, setResult, jobStatus, jobProgress, jobMessage,
   } = useAnalysisStore()
 
@@ -34,15 +34,20 @@ export default function AnalysisForm({ onFlyTo, onResult, onProgress, drawMode, 
 
   const handleSubmit = async () => {
     if (!bbox)  return toast.error('Draw an area of interest on the map first')
-    if (!date1) return toast.error('Select a "before" date')
-    if (!date2) return toast.error('Select an "after" date')
-    if (date2 <= date1) return toast.error('"After" date must be later than "before" date')
+    if (dates.some(d => !d)) return toast.error('Please fill in all dates')
+    
+    // Validate chronological order
+    for (let i = 0; i < dates.length - 1; i++) {
+        if (dates[i] >= dates[i+1]) {
+            return toast.error(`Date ${i+2} must be later than Date ${i+1}`)
+        }
+    }
 
     setSubmitting(true)
     onDrawModeChange(false)
 
     try {
-      const { job_id } = await submitAnalysis({ bbox, date1, date2, model })
+      const { job_id } = await submitAnalysis({ bbox, dates })
       setJobId(job_id)
       setJobStatus('queued', 0, 'Waiting to start...')
       toast.success('Analysis submitted!')
@@ -122,59 +127,57 @@ export default function AnalysisForm({ onFlyTo, onResult, onProgress, drawMode, 
         )}
       </div>
 
-      {/* Dates */}
+      {/* Dates Selection */}
       <div>
-        <label className="section-title">Before Date (T1)</label>
-        <input
-          type="date"
-          value={date1}
-          max={date2 || '2024-12-31'}
-          onChange={e => setDate1(e.target.value)}
-          className="input-field"
-        />
-      </div>
-      <div>
-        <label className="section-title">After Date (T2)</label>
-        <input
-          type="date"
-          value={date2}
-          min={date1 || '2015-01-01'}
-          max="2025-06-30"
-          onChange={e => setDate2(e.target.value)}
-          className="input-field"
-        />
-      </div>
-
-      {/* Model selection */}
-      <div>
-        <label className="section-title">Detection Model</label>
-        <div className="flex gap-2">
-          {[
-            { id: 'rf',      label: 'Random Forest', badge: 'Recommended' },
-            { id: 'siamese', label: 'Siamese CNN',   badge: 'DL' },
-          ].map(m => (
-            <button
-              key={m.id}
-              onClick={() => setModel(m.id)}
-              className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium border transition-colors ${
-                model === m.id
-                  ? 'border-primary bg-primary/20 text-primary-l'
-                  : 'border-border text-slate-400 hover:border-slate-500'
-              }`}
-            >
-              {m.label}
-              {m.badge && (
-                <span className="ml-1 text-[10px] text-slate-500">[{m.badge}]</span>
-              )}
-            </button>
-          ))}
+        <div className="flex items-center justify-between mb-2">
+            <label className="section-title !mb-0">Selected Dates</label>
+            {dates.length < 4 && (
+                <button
+                    onClick={() => setDates([...dates, ''])}
+                    className="text-xs text-primary hover:text-primary-l font-medium"
+                >
+                    + Add Date
+                </button>
+            )}
+        </div>
+        
+        <div className="flex flex-col gap-2">
+            {dates.map((date, idx) => (
+                <div key={idx} className="flex gap-2 items-center">
+                    <span className="text-xs font-medium text-slate-400 w-12">Date {idx + 1}</span>
+                    <input
+                        type="date"
+                        value={date}
+                        min={idx > 0 ? dates[idx-1] : '2015-01-01'}
+                        max="2025-06-30"
+                        onChange={e => {
+                            const newDates = [...dates]
+                            newDates[idx] = e.target.value
+                            setDates(newDates)
+                        }}
+                        className="input-field flex-1"
+                    />
+                    {dates.length > 2 && idx === dates.length - 1 && (
+                        <button
+                            onClick={() => {
+                                const newDates = [...dates]
+                                newDates.pop()
+                                setDates(newDates)
+                            }}
+                            className="text-slate-500 hover:text-red-400 p-1"
+                        >
+                            ✕
+                        </button>
+                    )}
+                </div>
+            ))}
         </div>
       </div>
 
       {/* Submit */}
       <button
         onClick={handleSubmit}
-        disabled={isRunning || !bbox || !date1 || !date2}
+        disabled={isRunning || !bbox || dates.some(d => !d)}
         className="btn-primary w-full py-2.5 flex items-center justify-center gap-2"
       >
         {isRunning

@@ -23,12 +23,17 @@ function ConfidenceBadge({ confidence }) {
 }
 
 export default function ResultsPanel() {
-  const { result, activeLayer, setActiveLayer, jobId } = useAnalysisStore()
+  const { result, activeLayer, setActiveLayer, jobId, activeStep } = useAnalysisStore()
 
   if (!result) return null
 
-  const { stats, interpretation, t1_actual_date, t2_actual_date,
-          cloud_cover_t1, cloud_cover_t2, model_used } = result
+  const timelineStep = result.timeline?.[activeStep - 1] || {}
+  const { stats, interpretation } = timelineStep
+  const model_used = result.model_used
+  const t1_actual_date = result.images?.[activeStep - 1]?.date
+  const t2_actual_date = result.images?.[activeStep]?.date
+  const cloud_cover_t1 = result.cloud_covers?.[activeStep - 1]
+  const cloud_cover_t2 = result.cloud_covers?.[activeStep]
 
   const layers = [
     { id: 'before', label: '◀ Before', icon: '📅' },

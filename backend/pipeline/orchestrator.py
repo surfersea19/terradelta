@@ -31,112 +31,10 @@ OUTPUT_DIR = Path(__file__).parent.parent / "output_files"
 
 
 def run_analysis_pipeline(job_id: str, bbox: list,
-                          date1: str, date2: str,
-                          model_type: str = "rf",
+                          dates: list,
                           progress_callback=None) -> dict:
     """
-    Full change detection pipeline for a single T1/T2 analysis.
-    progress_callback(pct: int, message: str) called at each stage.
-
-    Returns result dict ready for DB storage and API response.
-    """
-    def progress(pct, msg):
-        logger.info(f"[{job_id[:8]}] {pct}% — {msg}")
-        if progress_callback:
-            progress_callback(pct, msg)
-
-    out_dir = ensure_output_dir(OUTPUT_DIR, job_id)
-
-    # ── Stage 1: Data access ─────────────────────────────────────────────
-    progress(5, "Searching for cloud-free Sentinel-2 imagery...")
-    (t1_bands, t2_bands,
-     t1_actual_date, t2_actual_date,
-     cloud1, cloud2, shape) = load_bands_for_job(bbox, date1, date2, out_dir)
-
-    # ── Stage 2: Preprocessing ───────────────────────────────────────────
-    progress(20, "Preprocessing bands...")
-    t1_bands, t1_indices = preprocess_bands(t1_bands)
-    t2_bands, t2_indices = preprocess_bands(t2_bands)
-
-    # ── Stage 3: Export true-color images ───────────────────────────────
-    progress(30, "Generating before/after images...")
-    rgb_t1 = bands_to_rgb(t1_bands)
-    rgb_t2 = bands_to_rgb(t2_bands)
-    save_rgb_image(rgb_t1, out_dir / "before.png")
-    save_rgb_image(rgb_t2, out_dir / "after.png")
-
-    # ── Stage 4: Feature engineering ─────────────────────────────────────
-    progress(40, "Engineering spectral and texture features...")
-    features = build_feature_array(t1_bands, t2_bands, t1_indices, t2_indices,
-                                   use_texture=True)
-
-    # ── Stage 5: ML Inference ────────────────────────────────────────────
-    progress(55, "Running AI change detection model...")
-    model = get_model()
-    prob_map = run_rf_inference(features, model)
-
-    # ── Stage 6: Post-processing ─────────────────────────────────────────
-    progress(70, "Post-processing change map...")
-    change_mask = postprocess_change_map(prob_map, threshold=0.5, min_area_pixels=9)
-
-    # ── Stage 7: Human-change filter ─────────────────────────────────────
-    progress(78, "Filtering environmental changes...")
-    change_mask = human_change_filter(change_mask, t1_indices, t2_indices)
-
-    # ── Stage 8: Vectorize ───────────────────────────────────────────────
-    progress(83, "Vectorizing change regions...")
-    features_geojson = vectorize_changes(change_mask, bbox, prob_map)
-    geojson = build_geojson(features_geojson)
-    save_geojson(geojson, out_dir / "changes.geojson")
-
-    # ── Stage 9: Save change mask PNG ────────────────────────────────────
-    save_change_mask_png(change_mask, prob_map, out_dir / "change_mask.png")
-
-    # ── Stage 10: Statistics ─────────────────────────────────────────────
-    progress(88, "Computing statistics...")
-    stats = compute_statistics(change_mask, prob_map)
-
-    # ── Stage 11: Interpretation ─────────────────────────────────────────
-    progress(93, "Generating interpretation...")
-    interpretation = generate_interpretation(stats, t1_indices, t2_indices, bbox)
-
-    # ── Stage 12: Assemble result ─────────────────────────────────────────
-    progress(98, "Finalising results...")
-    result = {
-        "job_id":           job_id,
-        "bbox":             bbox,
-        "date1":            date1,
-        "date2":            date2,
-        "t1_actual_date":   t1_actual_date,
-        "t2_actual_date":   t2_actual_date,
-        "cloud_cover_t1":   round(cloud1, 1),
-        "cloud_cover_t2":   round(cloud2, 1),
-        "model_used":       model_type,
-        "stats":            stats,
-        "interpretation":   interpretation,
-        "output_dir":       str(out_dir),
-        "before_image_url": f"/files/{job_id}/before.png",
-        "after_image_url":  f"/files/{job_id}/after.png",
-        "change_mask_url":  f"/files/{job_id}/change_mask.png",
-        "change_geojson_url": f"/files/{job_id}/changes.geojson",
-        # Flatten stats for DB
-        "changed_area_ha":       stats.get("changed_area_ha"),
-        "change_percent":        stats.get("change_percent"),
-        "num_clusters":          stats.get("num_clusters"),
-        "mean_confidence":       stats.get("mean_confidence"),
-        "high_confidence_area_ha": stats.get("high_confidence_area_ha"),
-    }
-
-    progress(100, "Analysis complete.")
-    return result
-
-
-def run_monitoring_pipeline(job_id: str, bbox: list,
-                            dates: list,
-                            progress_callback=None) -> dict:
-    """
-    Multi-date monitoring pipeline.
-    Runs change detection relative to T1 for each subsequent date.
+    Full change detection pipeline for consecutive dates.
     """
     def progress(pct, msg):
         logger.info(f"[{job_id[:8]}] {pct}% — {msg}")
@@ -146,49 +44,73 @@ def run_monitoring_pipeline(job_id: str, bbox: list,
     from pipeline.statistics import compute_monitoring_timeline
 
     out_dir = ensure_output_dir(OUTPUT_DIR, job_id)
-    timeline_masks = []
-    timeline_dates = []
-    step = 80 // max(len(dates) - 1, 1)
+    timeline = []
+    actual_dates = []
+    cloud_covers = []
+    step = 90 // max(len(dates) - 1, 1)
 
-    progress(5, "Loading baseline imagery (T1)...")
-    (t1_bands, _, t1_actual, _, cloud1, _, shape) = load_bands_for_job(
+    progress(5, f"Loading imagery for {dates[0]}...")
+    (prev_bands, _, prev_actual, _, cloud1, _, shape) = load_bands_for_job(
         bbox, dates[0], dates[0], out_dir)
-    t1_bands, t1_indices = preprocess_bands(t1_bands)
+    prev_bands, prev_indices = preprocess_bands(prev_bands)
 
-    rgb_t1 = bands_to_rgb(t1_bands)
-    save_rgb_image(rgb_t1, out_dir / "baseline.png")
+    rgb_prev = bands_to_rgb(prev_bands)
+    save_rgb_image(rgb_prev, out_dir / "date_0.png")
+    
+    actual_dates.append(prev_actual)
+    cloud_covers.append(round(cloud1, 1))
 
-    for i, date in enumerate(dates[1:], 1):
+    for i in range(1, len(dates)):
         pct = 10 + (i - 1) * step
-        progress(pct, f"Processing date {i}/{len(dates)-1}: {date}...")
+        progress(pct, f"Processing {dates[i-1]} → {dates[i]}...")
 
-        (_, t2_bands, _, t2_actual, _, cloud2, _) = load_bands_for_job(
-            bbox, date, date, out_dir)
-        t2_bands, t2_indices = preprocess_bands(t2_bands)
+        (_, curr_bands, _, curr_actual, _, cloud2, _) = load_bands_for_job(
+            bbox, dates[i], dates[i], out_dir)
+        curr_bands, curr_indices = preprocess_bands(curr_bands)
 
-        feats = build_feature_array(t1_bands, t2_bands, t1_indices, t2_indices,
+        actual_dates.append(curr_actual)
+        cloud_covers.append(round(cloud2, 1))
+
+        feats = build_feature_array(prev_bands, curr_bands, prev_indices, curr_indices,
                                     use_texture=True)
         model = get_model()
         prob_map = run_rf_inference(feats, model)
         mask = postprocess_change_map(prob_map)
-        mask = human_change_filter(mask, t1_indices, t2_indices)
+        mask = human_change_filter(mask, prev_indices, curr_indices)
 
-        rgb_t2 = bands_to_rgb(t2_bands)
-        save_rgb_image(rgb_t2, out_dir / f"date_{i}.png")
+        rgb_curr = bands_to_rgb(curr_bands)
+        save_rgb_image(rgb_curr, out_dir / f"date_{i}.png")
         save_change_mask_png(mask, prob_map, out_dir / f"change_{i}.png")
+        
+        features_geojson = vectorize_changes(mask, bbox, prob_map)
+        geojson = build_geojson(features_geojson)
+        save_geojson(geojson, out_dir / f"changes_{i}.geojson")
 
-        timeline_masks.append(mask)
-        timeline_dates.append(t2_actual)
+        stats = compute_statistics(mask, prob_map)
+        interpretation = generate_interpretation(stats, prev_indices, curr_indices, bbox)
+        
+        timeline.append({
+            "date": curr_actual,
+            "stats": stats,
+            "interpretation": interpretation
+        })
+        
+        # curr becomes prev for next iteration
+        prev_bands, prev_indices = curr_bands, curr_indices
 
-    progress(92, "Computing timeline statistics...")
-    timeline = compute_monitoring_timeline(timeline_masks, timeline_dates)
-
-    progress(100, "Monitoring complete.")
+    progress(100, "Analysis complete.")
     return {
         "job_id":        job_id,
         "bbox":          bbox,
         "dates":         dates,
+        "actual_dates":  actual_dates,
+        "cloud_covers":  cloud_covers,
         "timeline":      timeline,
-        "baseline_url":  f"/files/{job_id}/baseline.png",
+        "model_used":    "rf",
         "output_dir":    str(out_dir),
     }
+
+def run_monitoring_pipeline(job_id: str, bbox: list,
+                            dates: list,
+                            progress_callback=None) -> dict:
+    return run_analysis_pipeline(job_id, bbox, dates, progress_callback)

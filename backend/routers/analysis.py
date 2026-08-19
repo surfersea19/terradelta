@@ -187,7 +187,8 @@ async def download_report(job_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=202, detail="Job not yet complete")
 
     result_row = get_result(db, job_id)
-    pdf_path = OUTPUT_DIR / job_id / "report.pdf"
+    job_dir = OUTPUT_DIR / job_id
+    pdf_path = job_dir / "report.pdf"
 
     if not pdf_path.exists():
         dates = json.loads(job.dates) if job.dates else []
@@ -204,7 +205,7 @@ async def download_report(job_id: str, db: Session = Depends(get_db)):
             "model_used":     result_row.model_used,
             "timeline":       timeline,
         }
-        generate_pdf_report(result_data, job_id, pdf_path)
+        generate_pdf_report(result_data, job_id, pdf_path, images_dir=job_dir)
 
     return FileResponse(
         str(pdf_path),

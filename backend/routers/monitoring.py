@@ -7,9 +7,11 @@ GET  /api/monitoring/result/{job_id}
 import uuid
 import json
 import logging
+from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
@@ -18,10 +20,13 @@ from db.database import (
     save_result, get_job, get_result, SavedArea, User
 )
 from pipeline.orchestrator import run_analysis_pipeline
+from reports.pdf_generator import generate_pdf_report
 from routers.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/monitoring", tags=["monitoring"])
+
+OUTPUT_DIR = Path(__file__).parent.parent / "output_files"
 
 
 class MonitoringRequest(BaseModel):
@@ -169,3 +174,38 @@ async def get_monitoring_result(job_id: str, db: Session = Depends(get_db)):
         "timeline":     timeline,
         "images":       image_urls,
     }
+
+
+@router.get("/download/report/{job_id}")
+async def download_monitoring_report(job_id: str, db: Session = Depends(get_db)):
+    job = get_job(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "complete":
+        raise HTTPException(status_code=202, detail="Job not yet complete")
+
+    result_row = get_result(db, job_id)
+    job_dir = OUTPUT_DIR / job_id
+    pdf_path = job_dir / "report.pdf"
+
+    if not pdf_path.exists():
+        dates = json.loads(job.dates) if job.dates else []
+        timeline = json.loads(result_row.timeline_data or "[]")
+        actual_dates = json.loads(result_row.actual_dates or "[]")
+        cloud_covers = json.loads(result_row.cloud_covers or "[]")
+
+        result_data = {
+            "bbox":         json.loads(job.bbox),
+            "dates":        dates,
+            "actual_dates": actual_dates,
+            "cloud_covers": cloud_covers,
+            "model_used":   result_row.model_used,
+            "timeline":     timeline,
+        }
+        generate_pdf_report(result_data, job_id, pdf_path, images_dir=job_dir)
+
+    return FileResponse(
+        str(pdf_path),
+        media_type="application/pdf",
+        filename=f"terradelta_monitoring_report_{job_id[:8]}.pdf",
+    )

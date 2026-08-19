@@ -83,10 +83,18 @@ export const getMonitoringStatus = (jobId) =>
 export const getMonitoringResult = (jobId) =>
   api.get(`/monitoring/result/${jobId}`).then(r => r.data)
 
+export const downloadMonitoringReport = (jobId) =>
+  `${window.location.origin}/api/monitoring/download/report/${jobId}`
+
 // ── Advisor (F4) ─────────────────────────────────────────────────────────────
 
 export const getAdvisorRecommendations = async (stats) => {
     const { data } = await api.post('/advisor/recommendations', stats)
+    return data
+}
+
+export const analyzeLand = async ({ bbox, budget, purpose, custom_purpose }) => {
+    const { data } = await api.post('/advisor/analyze', { bbox, budget, purpose, custom_purpose })
     return data
 }
 

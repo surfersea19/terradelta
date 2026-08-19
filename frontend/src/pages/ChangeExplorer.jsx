@@ -14,6 +14,67 @@ const CHANGE_TYPES = [
   'Other',
 ]
 
+const CHANGE_DIMENSIONS = [
+  {
+    icon: '💰',
+    title: 'Economic Change',
+    text: 'Rising incomes and investment drive demand for housing, retail, and industry — visible as new construction and expanding built-up footprints.',
+  },
+  {
+    icon: '🌍',
+    title: 'Geographical Change',
+    text: 'Coastlines, riverbanks, and land reclamation reshape the physical map itself, sometimes over just a few years.',
+  },
+  {
+    icon: '🏙️',
+    title: 'Urbanisation',
+    text: 'Villages become towns and towns become cities as populations concentrate, replacing farmland with roads, housing, and commerce.',
+  },
+  {
+    icon: '🌉',
+    title: 'Infrastructure Development',
+    text: 'Bridges, airports, highways, and power corridors leave distinctive linear and clustered signatures in satellite change maps.',
+  },
+  {
+    icon: '🌾',
+    title: 'Land-Use Change',
+    text: 'Agricultural, forest, or barren land is repurposed for industry, housing, or conservation — often the earliest visible signal of change.',
+  },
+  {
+    icon: '🌦️',
+    title: 'Environmental & Climatic Change',
+    text: 'Flooding, drought, deforestation, and glacial retreat alter land cover independent of direct human construction.',
+  },
+  {
+    icon: '🏗️',
+    title: 'Human-Made Change',
+    text: 'From single buildings to entire planned cities, deliberate human activity is the dominant driver of change visible from space today.',
+  },
+]
+
+function ChangeIntro() {
+  return (
+    <div className="max-w-4xl mx-auto mb-8">
+      <div className="text-center mb-5">
+        <h2 className="text-2xl font-bold text-slate-100 mb-1">Change Is The Only Constant</h2>
+        <p className="text-sm text-slate-400 max-w-2xl mx-auto">
+          Every satellite image is a snapshot of a moment. Compare two moments and you see
+          the forces reshaping our planet — most of them driven by us.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {CHANGE_DIMENSIONS.map(d => (
+          <div key={d.title} className="card py-3 px-3">
+            <div className="text-xl mb-1">{d.icon}</div>
+            <div className="text-xs font-semibold text-slate-200 mb-1">{d.title}</div>
+            <div className="text-[11px] text-slate-400 leading-snug">{d.text}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function ImagePanel({ url, label, year }) {
   const [failed, setFailed] = useState(false)
   return (
@@ -255,6 +316,7 @@ export default function ChangeExplorer() {
       </div>
 
       <div className="p-6">
+        <ChangeIntro />
         <ExplorerCard
           location={fullLocation}
           index={currentIndex}

@@ -5,7 +5,7 @@ import {
 import BaseMap from '../components/map/BaseMap.jsx'
 import LoadingOverlay from '../components/shared/LoadingOverlay.jsx'
 import { useMonitoringStore } from '../store/analysisStore.js'
-import { submitMonitoring, getMonitoringStatus, getMonitoringResult, login, signup, logout, getCurrentUser, getSavedAreas, saveArea } from '../services/api.js'
+import { submitMonitoring, getMonitoringStatus, getMonitoringResult, login, signup, logout, getCurrentUser, getSavedAreas, saveArea, downloadMonitoringReport } from '../services/api.js'
 import toast from 'react-hot-toast'
 import { useEffect } from 'react'
 
@@ -307,6 +307,18 @@ export default function AreaMonitoring() {
 
           {/* Timeline chart */}
           {result?.timeline && <TimelineChart data={result.timeline} />}
+
+          {/* Download report */}
+          {result?.job_id && (
+            <a
+              href={downloadMonitoringReport(result.job_id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-secondary w-full py-2 text-center text-sm"
+            >
+              📄 Download PDF Report
+            </a>
+          )}
 
           {/* Date navigator */}
           {result?.images && (

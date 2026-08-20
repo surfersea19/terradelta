@@ -22,6 +22,20 @@ function ConfidenceBadge({ confidence }) {
   )
 }
 
+function DataSourceBadge({ source }) {
+  if (!source) return null
+  const isReal = source === 'real_sentinel2'
+  return (
+    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+      isReal
+        ? 'bg-green-900/40 text-green-400 border border-green-700/50'
+        : 'bg-yellow-900/40 text-yellow-400 border border-yellow-700/50'
+    }`}>
+      {isReal ? '🛰️ Real Sentinel-2' : '⚠ Synthetic Demo Data'}
+    </span>
+  )
+}
+
 export default function ResultsPanel() {
   const { result, activeLayer, setActiveLayer, jobId, activeStep } = useAnalysisStore()
 
@@ -34,6 +48,10 @@ export default function ResultsPanel() {
   const t2_actual_date = result.images?.[activeStep]?.date
   const cloud_cover_t1 = result.cloud_covers?.[activeStep - 1]
   const cloud_cover_t2 = result.cloud_covers?.[activeStep]
+  const source_t1 = result.data_sources?.[activeStep - 1]
+  const source_t2 = result.data_sources?.[activeStep]
+  const reason_t1 = result.fallback_reasons?.[activeStep - 1]
+  const reason_t2 = result.fallback_reasons?.[activeStep]
 
   const layers = [
     { id: 'before', label: '◀ Before', icon: '📅' },
@@ -43,6 +61,20 @@ export default function ResultsPanel() {
 
   return (
     <div className="flex flex-col gap-4 fade-in-up">
+      {/* Data source notice */}
+      {result.any_synthetic && (
+        <div className="card border border-yellow-700/40 bg-yellow-900/10 py-2.5">
+          <div className="text-xs font-semibold text-yellow-400 mb-1">
+            ⚠ Synthetic demo data in use
+          </div>
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+            One or more dates below used procedurally generated demo imagery, not real
+            Sentinel-2 acquisitions{reason_t1 || reason_t2 ? ` — ${reason_t1 || reason_t2}` : ''}.
+            Statistics and change maps for those dates are illustrative only.
+          </p>
+        </div>
+      )}
+
       {/* Layer toggle */}
       <div>
         <label className="section-title">Map Layer</label>
@@ -71,11 +103,13 @@ export default function ResultsPanel() {
           <div className="text-slate-500 mb-0.5">Before</div>
           <div className="text-slate-200 font-medium">{t1_actual_date}</div>
           <div>Cloud: {cloud_cover_t1?.toFixed(1)}%</div>
+          <div className="mt-1"><DataSourceBadge source={source_t1} /></div>
         </div>
         <div>
           <div className="text-slate-500 mb-0.5">After</div>
           <div className="text-slate-200 font-medium">{t2_actual_date}</div>
           <div>Cloud: {cloud_cover_t2?.toFixed(1)}%</div>
+          <div className="mt-1"><DataSourceBadge source={source_t2} /></div>
         </div>
       </div>
 

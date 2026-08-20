@@ -305,6 +305,20 @@ export default function AreaMonitoring() {
             </div>
           )}
 
+          {/* Data source notice */}
+          {result?.any_synthetic && (
+            <div className="card border border-yellow-700/40 bg-yellow-900/10 py-2.5">
+              <div className="text-xs font-semibold text-yellow-400 mb-1">
+                ⚠ Synthetic demo data in use
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                One or more dates in this run used procedurally generated demo imagery,
+                not real Sentinel-2 acquisitions. Statistics and change maps for those
+                dates are illustrative only.
+              </p>
+            </div>
+          )}
+
           {/* Timeline chart */}
           {result?.timeline && <TimelineChart data={result.timeline} />}
 

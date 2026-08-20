@@ -32,50 +32,26 @@ logger = logging.getLogger(__name__)
 
 # ── Synthetic data generation ─────────────────────────────────────────────────
 
-def make_synthetic_dataset(n_scenes: int = 20, pixels_per_scene: int = 5000,
-                           n_features: int = 42, seed: int = 42) -> tuple:
+def make_synthetic_dataset(n_scenes: int = 30, pixels_per_scene: int = 8000,
+                           seed: int = 42) -> tuple:
     """
-    Generate synthetic change / no-change feature vectors.
-    Simulates a plausible Sentinel-2 spectral + texture feature space.
+    Generate a SELF-CONSISTENT synthetic dataset by running synthetic
+    Sentinel-2-like scenes through the real preprocessing + feature pipeline
+    (pipeline.preprocessing / pipeline.features), labeled with the true
+    inserted-"development"-patch mask.
+
+    Previous versions of this function hand-crafted 42-dim vectors with
+    offsets injected at indices that did NOT match build_feature_array()'s
+    actual column layout (diffs were assumed at 24-29 instead of the real
+    20-25, "log ratio" assumed at 36:42 instead of the real 30-35 — see
+    backend/pipeline/synthetic_training.py for the full writeup). This now
+    delegates to that shared, bug-free generator so the CLI script and the
+    backend's auto-trained demo model are built the same way.
     """
-    rng = np.random.default_rng(seed)
-    X_list, y_list = [], []
-
-    for scene_i in range(n_scenes):
-        scene_seed = seed + scene_i * 7
-        rng_s = np.random.default_rng(scene_seed)
-
-        # No-change pixels (~75% of scene)
-        n_nc = int(pixels_per_scene * 0.75)
-        X_nc = rng_s.normal(0, 0.05, (n_nc, n_features)).astype(np.float32)
-        # Small residual noise in difference channels (24-35)
-        X_nc[:, 24:36] = rng_s.normal(0, 0.02, (n_nc, 12))
-
-        # Change pixels (~25% of scene) — simulated urban expansion
-        n_c = pixels_per_scene - n_nc
-        X_c = rng_s.normal(0, 0.05, (n_c, n_features)).astype(np.float32)
-        # Band differences (T2 - T1): SWIR increases, NIR decreases
-        X_c[:, 24] += rng_s.uniform(0.02, 0.06, n_c)   # B02 diff
-        X_c[:, 25] += rng_s.uniform(0.02, 0.06, n_c)   # B03 diff
-        X_c[:, 26] += rng_s.uniform(0.02, 0.05, n_c)   # B04 diff
-        X_c[:, 27] -= rng_s.uniform(0.05, 0.15, n_c)   # B08 diff (NIR drops)
-        X_c[:, 28] += rng_s.uniform(0.05, 0.12, n_c)   # B11 diff (SWIR rises)
-        X_c[:, 29] += rng_s.uniform(0.03, 0.08, n_c)   # B12 diff
-        # NDVI diff (drops) and NDBI diff (rises)
-        X_c[:, 30] -= rng_s.uniform(0.10, 0.25, n_c)   # NDVI diff
-        X_c[:, 31] += rng_s.uniform(0.05, 0.15, n_c)   # NDBI diff
-        # Log ratio features
-        X_c[:, 36:42] += rng_s.uniform(0.05, 0.2, (n_c, 6))
-
-        X_list.append(np.vstack([X_nc, X_c]))
-        y_list.append(np.array([0] * n_nc + [1] * n_c))
-
-    X = np.vstack(X_list)
-    y = np.concatenate(y_list)
-
-    # Shuffle
-    idx = np.random.default_rng(seed + 1).permutation(len(X))
-    return X[idx], y[idx]
+    sys.path.insert(0, str(Path(__file__).parent.parent / 'backend'))
+    from pipeline.synthetic_training import build_self_consistent_dataset
+    return build_self_consistent_dataset(
+        n_scenes=n_scenes, max_pixels_per_scene=pixels_per_scene, seed=seed)
 
 
 # ── Training ──────────────────────────────────────────────────────────────────

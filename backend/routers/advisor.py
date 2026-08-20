@@ -1,15 +1,29 @@
+"""
+AI Land Advisor — FastAPI router.
+
+feature/ai-land-advisor: enhanced to pass OSM proximity data through
+scoring functions and return richer response payload (area_ha, proximity
+facts, icon per purpose).
+
+The /recommendations endpoint (used by the primary agent's change-detection
+results panel) is left completely untouched.
+"""
 import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, field_validator
 from typing import List, Dict, Any, Optional
 
-from pipeline.land_context import analyze_context, score_all_purposes, score_custom_purpose
+from pipeline.land_context import (
+    analyze_context,
+    score_all_purposes,
+    score_custom_purpose,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/advisor", tags=["advisor"])
 
 
-# ── F4: AI Land Advisor (map-based, budget + purpose) ───────────────────────
+# ── F4: AI Land Advisor ──────────────────────────────────────────────────────
 
 KNOWN_PURPOSES = {
     "agriculture", "residential", "commercial", "showroom",
@@ -18,9 +32,9 @@ KNOWN_PURPOSES = {
 
 
 class LandAdvisorRequest(BaseModel):
-    bbox: List[float]           # [lon_min, lat_min, lon_max, lat_max] — the user's land
-    budget: float                # in local currency units (e.g. INR)
-    purpose: str                 # one of KNOWN_PURPOSES, or "custom"
+    bbox: List[float]
+    budget: float
+    purpose: str
     custom_purpose: Optional[str] = None
 
     @field_validator("bbox")
@@ -44,20 +58,27 @@ class LandAdvisorRequest(BaseModel):
 @router.post("/analyze")
 def analyze_land(request: LandAdvisorRequest):
     """
-    Core DECIDE endpoint. Given an AOI (the user's land), a budget, and an
-    intended purpose, returns a recommendation + explicit reasoning based on
-    land-cover context — never fabricating roads, businesses, or population
-    figures. If a purpose isn't in our rule set, it's scored generically and
-    that limitation is stated plainly.
-    """
-    context = analyze_context(request.bbox)
-    aoi, surrounding = context["aoi"], context["surrounding"]
+    Core DECIDE endpoint.
 
-    all_scores = score_all_purposes(aoi, surrounding, request.budget)
+    Returns:
+      - recommendation for the requested purpose with score + reasoning
+      - all-purpose comparison scores (for radar / alternatives)
+      - land-cover composition for AOI + surrounding buffer
+      - OSM proximity context (or land-cover inference fallback)
+      - area_ha estimate
+      - data_limitations + disclaimer
+    """
+    context     = analyze_context(request.bbox)
+    aoi         = context["aoi"]
+    surrounding = context["surrounding"]
+    proximity   = context["proximity"]
+
+    # Score all purposes (pass proximity so scoring is OSM-aware)
+    all_scores = score_all_purposes(aoi, surrounding, request.budget, proximity)
 
     if request.purpose == "custom":
-        label = (request.custom_purpose or "").strip() or "Custom purpose"
-        requested = score_custom_purpose(aoi, surrounding, request.budget, label)
+        label     = (request.custom_purpose or "").strip() or "Custom purpose"
+        requested = score_custom_purpose(aoi, surrounding, request.budget, label, proximity)
     elif request.purpose in KNOWN_PURPOSES:
         requested = next((r for r in all_scores if r["purpose"] == request.purpose), None)
         if requested is None:
@@ -65,33 +86,43 @@ def analyze_land(request: LandAdvisorRequest):
     else:
         raise HTTPException(status_code=400, detail=f"Unknown purpose '{request.purpose}'")
 
-    if requested["score"] >= 65:
-        label = "Good fit"
-    elif requested["score"] >= 40:
-        label = "Moderate fit"
-    else:
-        label = "Poor fit"
+    score = requested["score"]
+    fit_label = "Excellent fit" if score >= 75 else "Good fit" if score >= 60 else "Moderate fit" if score >= 40 else "Poor fit"
+    fit_color = "green" if score >= 60 else "yellow" if score >= 40 else "red"
 
     return {
         "aoi_bbox": request.bbox,
+        "area_ha":  context["area_ha"],
         "context": {
-            "aoi": aoi,
+            "aoi":        aoi,
             "surrounding": surrounding,
         },
+        "proximity":  proximity,
         "recommendation": {
-            "purpose": requested["purpose"],
-            "score": requested["score"],
-            "label": label,
-            "why": requested["why"],
+            "purpose":   requested["purpose"],
+            "icon":      requested.get("icon", "🏗️"),
+            "score":     score,
+            "label":     fit_label,
+            "color":     fit_color,
+            "why":       requested["why"],
         },
-        "alternatives": [r for r in all_scores if r["purpose"] != requested.get("purpose")][:6],
+        # All scores for radar / comparison bar — exclude the requested one
+        "all_scores": all_scores,
+        "alternatives": [
+            r for r in all_scores if r["purpose"] != requested.get("purpose")
+        ][:6],
         "data_limitations": context["data_limitations"],
         "disclaimer": (
-            "This is an advisory estimate based on land-cover context only. It is not a "
-            "guaranteed business, financial, or legal recommendation. Verify with local "
-            "surveys, permits, and domain experts before making a land-use decision."
+            "This is an advisory estimate based on land-cover spectral indices and "
+            "publicly-available OpenStreetMap data. It is not a guaranteed business, "
+            "financial, or legal recommendation. Always verify with local surveys, "
+            "regulatory permits, and qualified domain experts before making any "
+            "land-use decision."
         ),
     }
+
+
+# ── /recommendations — DO NOT MODIFY — used by primary agent's ResultsPanel ──
 
 class AdvisorRequest(BaseModel):
     changed_area_ha: float
@@ -100,34 +131,36 @@ class AdvisorRequest(BaseModel):
     mean_confidence: float
     land_type_guess: str = "mixed"
 
+
 @router.post("/recommendations")
 def get_recommendations(request: AdvisorRequest):
     """
     Returns heuristic-based recommendations based on change statistics.
     No fabrication, strictly rule-based.
+    PRIMARY AGENT ENDPOINT — DO NOT MODIFY.
     """
     recs = []
-    
+
     if request.change_percent > 50:
         recs.append("High change percentage detected. Immediate on-ground survey recommended to verify development scale.")
     elif request.change_percent > 10:
         recs.append("Moderate change observed. Consider cross-referencing with local permit records.")
-        
+
     if request.changed_area_ha > 100:
         recs.append("Large scale land conversion (>100ha). Review environmental impact assessment compliance.")
-        
+
     if request.num_clusters > 10:
         recs.append("Highly fragmented change detected. This may indicate uncoordinated urban sprawl or scattered illegal settlements.")
     elif request.num_clusters == 1 and request.changed_area_ha > 50:
         recs.append("Single large cluster detected. Likely a major organized infrastructure or industrial project.")
-        
+
     if request.mean_confidence < 0.6:
         recs.append("Low model confidence. The detected changes could be seasonal agricultural variations or temporary earthworks. Ground truth required.")
-        
+
     if not recs:
         recs.append("Minor or routine changes detected. Continue periodic monitoring.")
-        
+
     return {
         "summary": f"Based on {request.changed_area_ha}ha of changed area across {request.num_clusters} clusters.",
-        "recommendations": recs
+        "recommendations": recs,
     }

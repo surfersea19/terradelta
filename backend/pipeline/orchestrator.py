@@ -63,6 +63,16 @@ def run_analysis_pipeline(job_id: str, bbox: list,
     data_sources.append(scene0["data_source"])
     fallback_reasons.append(scene0["fallback_reason"])
 
+    # Keep the very first date's preprocessed bands around (separate from
+    # prev_bands, which gets overwritten each loop iteration) so we can
+    # additionally compute an overall first-vs-last summary after the
+    # consecutive-pair loop finishes. This is ADDITIVE — the consecutive
+    # date-to-date comparisons above remain the primary DETECT output; this
+    # is a convenience "big picture" summary layered on top, per the
+    # product's Area Monitoring requirements.
+    first_bands, first_indices = prev_bands, prev_indices
+    curr_bands, curr_indices = prev_bands, prev_indices
+
     for i in range(1, len(dates)):
         pct = 10 + (i - 1) * step
         progress(pct, f"Processing {dates[i-1]} → {dates[i]}...")
@@ -103,6 +113,33 @@ def run_analysis_pipeline(job_id: str, bbox: list,
         # curr becomes prev for next iteration
         prev_bands, prev_indices = curr_bands, curr_indices
 
+    overall_change = None
+    if len(dates) >= 3:
+        # Overall T1-vs-Tn summary — only meaningful (and non-redundant with
+        # the consecutive breakdown above) when there are 3+ dates.
+        progress(95, f"Computing overall change {dates[0]} → {dates[-1]}...")
+        feats_overall = build_feature_array(first_bands, curr_bands, first_indices,
+                                            curr_indices, use_texture=True)
+        model = get_model()
+        prob_overall = run_rf_inference(feats_overall, model)
+        mask_overall = postprocess_change_map(prob_overall)
+        mask_overall = human_change_filter(mask_overall, first_indices, curr_indices)
+
+        save_change_mask_png(mask_overall, prob_overall, out_dir / "change_overall.png")
+        geojson_overall = build_geojson(vectorize_changes(mask_overall, bbox, prob_overall))
+        save_geojson(geojson_overall, out_dir / "changes_overall.geojson")
+
+        stats_overall = compute_statistics(mask_overall, prob_overall)
+        interpretation_overall = generate_interpretation(
+            stats_overall, first_indices, curr_indices, bbox)
+
+        overall_change = {
+            "from_date": actual_dates[0],
+            "to_date": actual_dates[-1],
+            "stats": stats_overall,
+            "interpretation": interpretation_overall,
+        }
+
     progress(100, "Analysis complete.")
 
     any_synthetic = any(s == "synthetic_fallback" for s in data_sources)
@@ -113,6 +150,7 @@ def run_analysis_pipeline(job_id: str, bbox: list,
         "actual_dates":     actual_dates,
         "cloud_covers":     cloud_covers,
         "timeline":         timeline,
+        "overall_change":   overall_change,
         "model_used":       "rf",
         "output_dir":       str(out_dir),
         "data_sources":     data_sources,

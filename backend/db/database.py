@@ -64,6 +64,7 @@ class Result(Base):
     cloud_covers = Column(Text, nullable=True)   # JSON array of cloud cover percentages
     data_sources = Column(Text, nullable=True)     # JSON array: "real_sentinel2" | "synthetic_fallback" per date
     fallback_reasons = Column(Text, nullable=True)  # JSON array of reason strings (or null) per date
+    overall_change_data = Column(Text, nullable=True)  # JSON: first-vs-last summary (null if <3 dates)
 
 
 def init_db():

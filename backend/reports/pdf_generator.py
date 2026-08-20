@@ -227,7 +227,7 @@ def generate_pdf_report(result: dict, job_id: str, output_path: Path,
             stats_data = [
                 ["Metric", "Value"],
                 ["Changed Area", f"{stats.get('changed_area_ha', 0):.2f} ha "
-                                 f"({stats.get('changed_area_m2', 0):,} m²)"],
+                                 f"({stats.get('changed_area_m2', 0):,} sq m)"],
                 ["Change Percentage", f"{stats.get('change_percent', 0):.2f}% of AOI"],
                 ["Number of Clusters", str(stats.get("num_clusters", 0))],
                 ["Mean Confidence", f"{stats.get('mean_confidence', 0):.1%}"],
@@ -258,6 +258,54 @@ def generate_pdf_report(result: dict, job_id: str, output_path: Path,
             interpretation = step.get("interpretation",
                                         "No interpretation available.")
             story.append(Paragraph(interpretation, body_style))
+            story.append(Spacer(1, 0.4*cm))
+
+        # Overall first-vs-last change summary (only present for 3+ dates)
+        overall_change = result.get("overall_change")
+        if overall_change:
+            story.append(PageBreak())
+            story.append(Paragraph("Overall Change Summary", section_style))
+            story.append(Paragraph(
+                f"<b>Full period:</b> {overall_change.get('from_date','?')} to "
+                f"{overall_change.get('to_date','?')} — a direct comparison of the "
+                f"first and last selected dates, in addition to the consecutive "
+                f"date-to-date breakdown above.", body_style))
+            story.append(Spacer(1, 0.2*cm))
+
+            overall_img = _fit_image(images_dir / "change_overall.png", max_w_cm=10, max_h_cm=7.5)
+            if overall_img is not None:
+                story.append(Paragraph("Detected change overlay, full period (red = changed)", small_style))
+                story.append(Spacer(1, 0.1*cm))
+                story.append(overall_img)
+                story.append(Spacer(1, 0.3*cm))
+
+            ostats = overall_change.get("stats", {})
+            ostats_data = [
+                ["Metric", "Value"],
+                ["Changed Area", f"{ostats.get('changed_area_ha', 0):.2f} ha "
+                                 f"({ostats.get('changed_area_m2', 0):,} sq m)"],
+                ["Change Percentage", f"{ostats.get('change_percent', 0):.2f}% of AOI"],
+                ["Number of Clusters", str(ostats.get("num_clusters", 0))],
+                ["Mean Confidence", f"{ostats.get('mean_confidence', 0):.1%}"],
+                ["High-Confidence Area", f"{ostats.get('high_confidence_area_ha', 0):.2f} ha"],
+            ]
+            ostats_table = Table(ostats_data, colWidths=[8*cm, 9*cm])
+            ostats_table.setStyle(TableStyle([
+                ("FONTNAME",       (0,0), (-1,0), "Helvetica-Bold"),
+                ("FONTSIZE",       (0,0), (-1,-1), 10),
+                ("BACKGROUND",     (0,0), (-1,0), colors.HexColor("#1a6e4a")),
+                ("TEXTCOLOR",      (0,0), (-1,0), colors.white),
+                ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f0fdf4")]),
+                ("TOPPADDING",     (0,0), (-1,-1), 6),
+                ("BOTTOMPADDING",  (0,0), (-1,-1), 6),
+                ("LEFTPADDING",    (0,0), (-1,-1), 10),
+                ("GRID",           (0,0), (-1,-1), 0.5, colors.HexColor("#e2e8f0")),
+            ]))
+            story.append(ostats_table)
+            story.append(Spacer(1, 0.3*cm))
+            story.append(Paragraph("AI Interpretation (full period)", section_style))
+            story.append(Paragraph(overall_change.get("interpretation",
+                                    "No interpretation available."), body_style))
             story.append(Spacer(1, 0.4*cm))
 
         # Limitations disclaimer

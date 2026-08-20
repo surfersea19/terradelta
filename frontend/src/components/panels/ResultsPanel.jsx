@@ -166,6 +166,37 @@ export default function ResultsPanel() {
         </div>
       )}
 
+      {/* Overall first-vs-last summary (only present for 3+ dates) */}
+      {result.overall_change && (
+        <div className="card border border-primary/40">
+          <div className="section-title mb-1">Overall Change (Full Period)</div>
+          <p className="text-[11px] text-slate-500 mb-3">
+            {result.overall_change.from_date} → {result.overall_change.to_date}
+            {' '}— direct comparison, in addition to the consecutive breakdown above.
+          </p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 mb-3">
+            <StatItem
+              label="Changed Area"
+              value={result.overall_change.stats?.changed_area_ha?.toFixed(1) ?? '—'}
+              unit="ha"
+              highlight
+            />
+            <StatItem
+              label="Change %"
+              value={result.overall_change.stats?.change_percent?.toFixed(1) ?? '—'}
+              unit="%"
+              highlight
+            />
+            <StatItem label="Clusters" value={result.overall_change.stats?.num_clusters ?? '—'} />
+            <StatItem
+              label="Confidence"
+              value={`${Math.round((result.overall_change.stats?.mean_confidence ?? 0) * 100)}%`}
+            />
+          </div>
+          <p className="text-sm text-slate-300 leading-relaxed">{result.overall_change.interpretation}</p>
+        </div>
+      )}
+
       {/* Download PDF */}
       {jobId && (
         <a

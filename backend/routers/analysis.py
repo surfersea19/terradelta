@@ -83,6 +83,7 @@ def _run_job(job_id: str, request: AnalysisRequest):
             "cloud_covers":     json.dumps(result.get("cloud_covers", [])),
             "data_sources":     json.dumps(result.get("data_sources", [])),
             "fallback_reasons": json.dumps(result.get("fallback_reasons", [])),
+            "overall_change_data": json.dumps(result.get("overall_change")),
         }
         save_result(db, job_id, db_result)
         update_job_progress(db, job_id, 100, status="complete")
@@ -159,6 +160,7 @@ async def get_result_endpoint(job_id: str, db: Session = Depends(get_db)):
     cloud_covers = json.loads(result.cloud_covers or "[]")
     data_sources = json.loads(result.data_sources or "[]")
     fallback_reasons = json.loads(result.fallback_reasons or "[]")
+    overall_change = json.loads(result.overall_change_data or "null")
     any_synthetic = any(s == "synthetic_fallback" for s in data_sources)
 
     image_urls = [{"date": actual_dates[0] if actual_dates else (dates[0] if dates else ""), "url": f"/files/{job_id}/date_0.png"}]
@@ -170,6 +172,12 @@ async def get_result_endpoint(job_id: str, db: Session = Depends(get_db)):
             "change_url": f"/files/{job_id}/change_{i}.png",
             "geojson":    f"/files/{job_id}/changes_{i}.geojson",
         })
+    overall_image_urls = None
+    if overall_change:
+        overall_image_urls = {
+            "change_url": f"/files/{job_id}/change_overall.png",
+            "geojson":    f"/files/{job_id}/changes_overall.geojson",
+        }
 
     return {
         "job_id":            job_id,
@@ -183,6 +191,8 @@ async def get_result_endpoint(job_id: str, db: Session = Depends(get_db)):
         "model_used":        result.model_used,
         "timeline":     timeline,
         "images":       image_urls,
+        "overall_change":      overall_change,
+        "overall_change_images": overall_image_urls,
     }
 
 
@@ -206,6 +216,7 @@ async def download_report(job_id: str, db: Session = Depends(get_db)):
 
         # Generate on demand
         data_sources = json.loads(result_row.data_sources or "[]")
+        overall_change = json.loads(result_row.overall_change_data or "null")
         result_data = {
             "bbox":           json.loads(job.bbox),
             "dates":          dates,
@@ -214,6 +225,7 @@ async def download_report(job_id: str, db: Session = Depends(get_db)):
             "model_used":     result_row.model_used,
             "timeline":       timeline,
             "data_sources":   data_sources,
+            "overall_change": overall_change,
         }
         generate_pdf_report(result_data, job_id, pdf_path, images_dir=job_dir)
 

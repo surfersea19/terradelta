@@ -69,6 +69,8 @@ export default function AreaMonitoring() {
   const [password, setPassword] = useState('')
   const [savedAreas, setSavedAreas] = useState([])
   const [newAreaName, setNewAreaName] = useState('')
+  const [flyTo, setFlyTo] = useState(null)
+  const [selectedAreaName, setSelectedAreaName] = useState(null)
 
   useEffect(() => {
       const init = async () => {
@@ -123,9 +125,22 @@ export default function AreaMonitoring() {
       }
   }
 
+  const handleSelectArea = (area) => {
+    // Returning to a saved AOI: reset any previous job/result so stale
+    // data from a different area isn't shown, load its geometry, fly the
+    // map there, and let the user pick dates for a fresh run.
+    reset()
+    setBbox(area.bbox)
+    setSelectedAreaName(area.name)
+    const center = [(area.bbox[1] + area.bbox[3]) / 2, (area.bbox[0] + area.bbox[2]) / 2]
+    setFlyTo({ center, zoom: 13 })
+    setDrawMode(false)
+  }
+
   const handleBboxChange = useCallback((newBbox) => {
     setBbox(newBbox)
     setDrawMode(false)
+    setSelectedAreaName(null)
   }, [setBbox])
 
   const addDate = () => {
@@ -219,7 +234,7 @@ export default function AreaMonitoring() {
                           <div className="text-xs text-slate-500 mb-1">Your Saved Areas:</div>
                           <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
                               {savedAreas.map(a => (
-                                  <button key={a.id} onClick={() => setBbox(a.bbox)} className="text-left text-xs bg-dark px-2 py-1 rounded hover:bg-slate-700">
+                                  <button key={a.id} onClick={() => handleSelectArea(a)} className={`text-left text-xs px-2 py-1 rounded hover:bg-slate-700 ${selectedAreaName === a.name ? 'bg-primary/20 text-primary-l' : 'bg-dark'}`}>
                                       📍 {a.name}
                                   </button>
                               ))}
@@ -322,6 +337,44 @@ export default function AreaMonitoring() {
           {/* Timeline chart */}
           {result?.timeline && <TimelineChart data={result.timeline} />}
 
+          {/* Overall first-vs-last summary (only present for 3+ dates) */}
+          {result?.overall_change && (
+            <div className="card border border-primary/40">
+              <div className="section-title mb-1">Overall Change (Full Period)</div>
+              <p className="text-[11px] text-slate-500 mb-3">
+                {result.overall_change.from_date} → {result.overall_change.to_date}
+                {' '}— direct comparison, in addition to the consecutive breakdown above.
+              </p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-2 text-xs">
+                <div>
+                  <div className="text-slate-500">Changed Area</div>
+                  <div className="text-slate-100 font-semibold">
+                    {result.overall_change.stats?.changed_area_ha?.toFixed(1) ?? '—'} ha
+                  </div>
+                </div>
+                <div>
+                  <div className="text-slate-500">Change %</div>
+                  <div className="text-slate-100 font-semibold">
+                    {result.overall_change.stats?.change_percent?.toFixed(1) ?? '—'}%
+                  </div>
+                </div>
+                <div>
+                  <div className="text-slate-500">Clusters</div>
+                  <div className="text-slate-100 font-semibold">
+                    {result.overall_change.stats?.num_clusters ?? '—'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-slate-500">Confidence</div>
+                  <div className="text-slate-100 font-semibold">
+                    {Math.round((result.overall_change.stats?.mean_confidence ?? 0) * 100)}%
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">{result.overall_change.interpretation}</p>
+            </div>
+          )}
+
           {/* Download report */}
           {result?.job_id && (
             <a
@@ -369,7 +422,7 @@ export default function AreaMonitoring() {
         <BaseMap
           center={[20.5, 78.9]}
           zoom={5}
-          // line deleted
+          flyTo={flyTo}
           drawMode={drawMode}
           onBboxChange={handleBboxChange}
           bbox={bbox}

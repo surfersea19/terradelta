@@ -62,6 +62,8 @@ class Result(Base):
     timeline_data = Column(Text, nullable=True)  # JSON for array of changes
     actual_dates = Column(Text, nullable=True)   # JSON array of dates
     cloud_covers = Column(Text, nullable=True)   # JSON array of cloud cover percentages
+    data_sources = Column(Text, nullable=True)     # JSON array: "real_sentinel2" | "synthetic_fallback" per date
+    fallback_reasons = Column(Text, nullable=True)  # JSON array of reason strings (or null) per date
 
 
 def init_db():

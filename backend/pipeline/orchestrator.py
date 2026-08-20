@@ -9,7 +9,7 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime
 
-from pipeline.data_access import load_bands_for_job
+from pipeline.data_access import load_bands_for_date
 from pipeline.preprocessing import preprocess_bands, bands_to_rgb
 from pipeline.features import build_feature_array
 from pipeline.inference import run_rf_inference, get_model
@@ -47,29 +47,33 @@ def run_analysis_pipeline(job_id: str, bbox: list,
     timeline = []
     actual_dates = []
     cloud_covers = []
+    data_sources = []       # "real_sentinel2" | "synthetic_fallback" per date
+    fallback_reasons = []   # None, or a human-readable reason, per date
     step = 90 // max(len(dates) - 1, 1)
 
     progress(5, f"Loading imagery for {dates[0]}...")
-    (prev_bands, _, prev_actual, _, cloud1, _, shape) = load_bands_for_job(
-        bbox, dates[0], dates[0], out_dir)
-    prev_bands, prev_indices = preprocess_bands(prev_bands)
+    scene0 = load_bands_for_date(bbox, dates[0], out_dir)
+    prev_bands, prev_indices = preprocess_bands(scene0["bands"])
 
     rgb_prev = bands_to_rgb(prev_bands)
     save_rgb_image(rgb_prev, out_dir / "date_0.png")
-    
-    actual_dates.append(prev_actual)
-    cloud_covers.append(round(cloud1, 1))
+
+    actual_dates.append(scene0["actual_date"])
+    cloud_covers.append(round(scene0["cloud_pct"], 1))
+    data_sources.append(scene0["data_source"])
+    fallback_reasons.append(scene0["fallback_reason"])
 
     for i in range(1, len(dates)):
         pct = 10 + (i - 1) * step
         progress(pct, f"Processing {dates[i-1]} → {dates[i]}...")
 
-        (_, curr_bands, _, curr_actual, _, cloud2, _) = load_bands_for_job(
-            bbox, dates[i], dates[i], out_dir)
-        curr_bands, curr_indices = preprocess_bands(curr_bands)
+        scene_i = load_bands_for_date(bbox, dates[i], out_dir)
+        curr_bands, curr_indices = preprocess_bands(scene_i["bands"])
 
-        actual_dates.append(curr_actual)
-        cloud_covers.append(round(cloud2, 1))
+        actual_dates.append(scene_i["actual_date"])
+        cloud_covers.append(round(scene_i["cloud_pct"], 1))
+        data_sources.append(scene_i["data_source"])
+        fallback_reasons.append(scene_i["fallback_reason"])
 
         feats = build_feature_array(prev_bands, curr_bands, prev_indices, curr_indices,
                                     use_texture=True)
@@ -88,26 +92,36 @@ def run_analysis_pipeline(job_id: str, bbox: list,
 
         stats = compute_statistics(mask, prob_map)
         interpretation = generate_interpretation(stats, prev_indices, curr_indices, bbox)
-        
+
         timeline.append({
-            "date": curr_actual,
+            "date": scene_i["actual_date"],
             "stats": stats,
-            "interpretation": interpretation
+            "interpretation": interpretation,
+            "data_source": scene_i["data_source"],
         })
         
         # curr becomes prev for next iteration
         prev_bands, prev_indices = curr_bands, curr_indices
 
     progress(100, "Analysis complete.")
+
+    any_synthetic = any(s == "synthetic_fallback" for s in data_sources)
     return {
-        "job_id":        job_id,
-        "bbox":          bbox,
-        "dates":         dates,
-        "actual_dates":  actual_dates,
-        "cloud_covers":  cloud_covers,
-        "timeline":      timeline,
-        "model_used":    "rf",
-        "output_dir":    str(out_dir),
+        "job_id":           job_id,
+        "bbox":             bbox,
+        "dates":            dates,
+        "actual_dates":     actual_dates,
+        "cloud_covers":     cloud_covers,
+        "timeline":         timeline,
+        "model_used":       "rf",
+        "output_dir":       str(out_dir),
+        "data_sources":     data_sources,
+        "fallback_reasons": fallback_reasons,
+        # Convenience summary flag: True if ANY date in this job used
+        # synthetic fallback rather than real Sentinel-2 imagery — the UI/PDF
+        # must surface this prominently rather than presenting mixed results
+        # as uniformly "real".
+        "any_synthetic":    any_synthetic,
     }
 
 def run_monitoring_pipeline(job_id: str, bbox: list,

@@ -19,38 +19,24 @@ MODEL_PATH = Path(__file__).parent.parent / "models" / "rf_change_detector.pkl"
 
 def train_demo_model() -> Pipeline:
     """
-    Train a Random Forest on synthetic change/no-change data.
+    Train a Random Forest on a SELF-CONSISTENT synthetic dataset.
     Used when no pre-trained model exists (first run / dev environment).
-    Produces a functional model — not production-quality without real labeled data.
+
+    Previously this generated hand-offset Gaussian vectors that assumed a
+    feature-column layout that didn't match build_feature_array()'s real
+    layout (see pipeline/synthetic_training.py docstring for the full
+    explanation). This now runs synthetic imagery through the ACTUAL
+    preprocessing + feature pipeline, so the 42 columns are guaranteed
+    consistent with what orchestrator.py produces at inference time.
+
+    Still a synthetic-data stopgap, not real Sentinel-2 — see
+    pipeline/synthetic_training.py and ml/prepare_data.py for the path to
+    training on real labeled imagery.
     """
-    logger.info("Training demo RF model on synthetic data...")
-    rng = np.random.default_rng(42)
+    logger.info("Training demo RF model on self-consistent synthetic data...")
+    from pipeline.synthetic_training import build_self_consistent_dataset
 
-    n_features = 42  # with texture features
-    n_samples = 20000
-
-    # Simulate feature distributions for change vs no-change
-    # Change pixels: higher diff features, lower NDVI diff, higher NDBI diff
-    n_change = n_samples // 4
-    n_nochange = n_samples - n_change
-
-    # No-change: small random features
-    X_nochange = rng.normal(0, 0.05, (n_nochange, n_features)).astype(np.float32)
-
-    # Change: larger diffs in specific feature positions
-    X_change = rng.normal(0, 0.05, (n_change, n_features)).astype(np.float32)
-    # Feature positions 24-29: band differences (key change signal)
-    X_change[:, 24:30] += rng.uniform(0.1, 0.3, (n_change, 6))
-    # NDBI difference (index 30+4=34 approx)
-    X_change[:, 30] -= rng.uniform(0.1, 0.25, n_change)  # NDVI drops
-    X_change[:, 31] += rng.uniform(0.05, 0.15, n_change)  # NDBI rises
-
-    X = np.vstack([X_nochange, X_change])
-    y = np.array([0] * n_nochange + [1] * n_change)
-
-    # Shuffle
-    idx = rng.permutation(len(X))
-    X, y = X[idx], y[idx]
+    X, y = build_self_consistent_dataset(n_scenes=24, max_pixels_per_scene=6000, seed=42)
 
     model = Pipeline([
         ('scaler', StandardScaler()),

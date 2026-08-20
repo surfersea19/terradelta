@@ -65,11 +65,13 @@ def _run_monitoring_job(job_id: str, request: MonitoringRequest):
         )
 
         db_result = {
-            "model_used":    result.get("model_used", "rf"),
-            "output_dir":    result.get("output_dir"),
-            "timeline_data": json.dumps(result.get("timeline", [])),
-            "actual_dates":  json.dumps(result.get("actual_dates", [])),
-            "cloud_covers":  json.dumps(result.get("cloud_covers", [])),
+            "model_used":       result.get("model_used", "rf"),
+            "output_dir":       result.get("output_dir"),
+            "timeline_data":    json.dumps(result.get("timeline", [])),
+            "actual_dates":     json.dumps(result.get("actual_dates", [])),
+            "cloud_covers":     json.dumps(result.get("cloud_covers", [])),
+            "data_sources":     json.dumps(result.get("data_sources", [])),
+            "fallback_reasons": json.dumps(result.get("fallback_reasons", [])),
         }
         save_result(db, job_id, db_result)
         update_job_progress(db, job_id, 100, status="complete")
@@ -153,6 +155,9 @@ async def get_monitoring_result(job_id: str, db: Session = Depends(get_db)):
     timeline = json.loads(result.timeline_data or "[]")
     actual_dates = json.loads(result.actual_dates or "[]")
     cloud_covers = json.loads(result.cloud_covers or "[]")
+    data_sources = json.loads(result.data_sources or "[]")
+    fallback_reasons = json.loads(result.fallback_reasons or "[]")
+    any_synthetic = any(s == "synthetic_fallback" for s in data_sources)
 
     image_urls = [{"date": actual_dates[0] if actual_dates else (dates[0] if dates else ""), "url": f"/files/{job_id}/date_0.png"}]
     for i in range(1, len(dates)):
@@ -165,12 +170,15 @@ async def get_monitoring_result(job_id: str, db: Session = Depends(get_db)):
         })
 
     return {
-        "job_id":       job_id,
-        "bbox":         json.loads(job.bbox),
-        "dates":        dates,
-        "actual_dates": actual_dates,
-        "cloud_covers": cloud_covers,
-        "model_used":   result.model_used,
+        "job_id":            job_id,
+        "bbox":              json.loads(job.bbox),
+        "dates":             dates,
+        "actual_dates":      actual_dates,
+        "cloud_covers":      cloud_covers,
+        "data_sources":      data_sources,
+        "fallback_reasons":  fallback_reasons,
+        "any_synthetic":     any_synthetic,
+        "model_used":        result.model_used,
         "timeline":     timeline,
         "images":       image_urls,
     }
@@ -194,6 +202,7 @@ async def download_monitoring_report(job_id: str, db: Session = Depends(get_db))
         actual_dates = json.loads(result_row.actual_dates or "[]")
         cloud_covers = json.loads(result_row.cloud_covers or "[]")
 
+        data_sources = json.loads(result_row.data_sources or "[]")
         result_data = {
             "bbox":         json.loads(job.bbox),
             "dates":        dates,
@@ -201,6 +210,7 @@ async def download_monitoring_report(job_id: str, db: Session = Depends(get_db))
             "cloud_covers": cloud_covers,
             "model_used":   result_row.model_used,
             "timeline":     timeline,
+            "data_sources": data_sources,
         }
         generate_pdf_report(result_data, job_id, pdf_path, images_dir=job_dir)
 

@@ -117,14 +117,26 @@ def generate_pdf_report(result: dict, job_id: str, output_path: Path,
         timeline = result.get("timeline", [])
         actual_dates = result.get("actual_dates", [])
         cloud_covers = result.get("cloud_covers", [])
+        data_sources = result.get("data_sources", [])
+        any_synthetic = any(s == "synthetic_fallback" for s in data_sources)
         
         dates_str = " → ".join(actual_dates) if actual_dates else "N/A"
+
+        source_label = "Mixed / Unknown"
+        if data_sources:
+            if all(s == "real_sentinel2" for s in data_sources):
+                source_label = "Real Sentinel-2 (Copernicus Data Space Ecosystem)"
+            elif all(s == "synthetic_fallback" for s in data_sources):
+                source_label = "SYNTHETIC DEMO DATA (no real satellite imagery)"
+            else:
+                source_label = "MIXED — some dates real, some synthetic demo data"
 
         meta_data = [
             ["Job ID", job_id[:16] + "..."],
             ["Analysis Area (bbox)", bbox_str],
             ["Timeline Dates", dates_str],
             ["Model Used",      result.get("model_used", "Random Forest").upper()],
+            ["Imagery Source",  source_label],
             ["Report Generated", datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")],
         ]
         meta_table = Table(meta_data, colWidths=[5*cm, 12*cm])
@@ -141,6 +153,23 @@ def generate_pdf_report(result: dict, job_id: str, output_path: Path,
             ("LEFTPADDING", (0,0), (-1,-1), 8),
         ]))
         story.append(meta_table)
+
+        if any_synthetic:
+            story.append(Spacer(1, 0.25*cm))
+            warn_style = ParagraphStyle(
+                'Warning', parent=styles['Normal'], fontSize=9,
+                textColor=colors.HexColor("#92400e"),
+                backColor=colors.HexColor("#fef3c7"),
+                borderPadding=(6, 8, 6, 8), leading=13,
+            )
+            story.append(Paragraph(
+                "<b>[!] Synthetic demo data notice:</b> One or more dates in this report used "
+                "procedurally generated demo imagery, not real Sentinel-2 acquisitions — "
+                "typically because no CDSE credentials were configured, no matching cloud-free "
+                "scene was found, or the real download step failed. Statistics and change maps "
+                "for those dates are illustrative only and must not be treated as real "
+                "measurements of this location.", warn_style))
+
         story.append(Spacer(1, 0.4*cm))
 
         from reportlab.platypus import PageBreak

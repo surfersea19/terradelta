@@ -568,7 +568,7 @@ function ImagePanel({ url, label, year }) {
     setFailed(false)
   }, [url])
   const imageUrl = url?.startsWith('/explorer-static/')
-    ? `http://localhost:8000${url}`
+    ? `${(import.meta.env.VITE_API_URL || 'http://localhost:8000/api').replace(/\/api$/, '')}${url}`
     : url
   return (
     <div className="flex flex-col gap-1.5">

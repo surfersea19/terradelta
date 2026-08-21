@@ -97,7 +97,17 @@ def search_sentinel2(bbox: list, target_date: str, cloud_max: int = 20,
         "collections": [CDSE_COLLECTION],
         "bbox": [float(x) for x in bbox],
         "datetime": f"{start}/{end}",
-        "limit": 20,
+        # NOTE: this was previously 20. Over a +/-15 day window, a bbox can
+        # legitimately match more than 20 Sentinel-2 acquisitions (multiple
+        # overlapping tiles/relative orbits, ~5-day revisit per satellite).
+        # CDSE's default result order is NOT sorted by cloud cover, so a
+        # genuinely low-cloud scene (e.g. 6.8%) can sit beyond position 20
+        # and be truncated by the server BEFORE our client-side cloud filter
+        # below ever sees it -- causing valid <=20%-cloud scenes to be
+        # silently missed even though the filter/threshold logic itself is
+        # correct. Raising the limit fixes this without changing the cloud
+        # threshold, comparison logic, or search window.
+        "limit": 100,
     }
 
     try:
